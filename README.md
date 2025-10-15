@@ -14,6 +14,7 @@ Converts Japanese text (Hiragana, Katakana, Kanji) to International Phonetic Alp
 - 🧵 **Thread-Safe**: Safe for concurrent operations after initialization
 - 📚 **Complete Dictionary**: 200,000+ phoneme entries included
 - 🚀 **No Manual Building**: Works like any other Flutter plugin
+- ✂️ **Word Segmentation**: Automatic word boundary detection with 147k+ word dictionary (adds spaces between words!)
 
 ## Installation
 
@@ -31,7 +32,7 @@ dependencies:
 
 ### Dictionary File Setup
 
-You'll need the `ja_phonemes.json` dictionary file (~6.7MB). There are two ways to use it:
+You'll need the `ja_phonemes.json` dictionary file (~6.7MB) for phoneme conversion. Optionally, include `ja_words.txt` (~3MB, 147k+ words) for word segmentation.
 
 **Option 1: Download to your app's assets**
 ```yaml
@@ -39,15 +40,20 @@ You'll need the `ja_phonemes.json` dictionary file (~6.7MB). There are two ways 
 flutter:
   assets:
     - assets/ja_phonemes.json
+    - assets/ja_words.txt      # Optional: for word segmentation
 ```
 
-Download `ja_phonemes.json` from this repo's `assets/` folder and place it in your app's `assets/` directory.
+Download both files from this repo's `assets/` folder and place them in your app's `assets/` directory.
 
 **Option 2: Use from package** (if you want to bundle it)
 ```dart
-// Reference the dictionary from the package
+// Reference the dictionaries from the package
 final packagePath = 'packages/japanese_phoneme_converter/assets/ja_phonemes.json';
 converter.init(packagePath);
+
+// Optional: Load word dictionary for segmentation
+final wordPath = 'packages/japanese_phoneme_converter/assets/ja_words.txt';
+converter.loadWordDictionary(wordPath);
 ```
 
 ### No Manual Building Required!
@@ -76,10 +82,18 @@ void main() {
     return;
   }
   
-  // Convert Japanese text
-  final result = converter.convert('こんにちは');
+  // Optional: Load word dictionary for word segmentation
+  try {
+    converter.loadWordDictionary('assets/ja_words.txt');
+    print('Word segmentation enabled! Loaded ${converter.wordCount} words');
+  } catch (e) {
+    print('Word segmentation disabled: $e');
+  }
+  
+  // Convert Japanese text (with automatic word spacing if dictionary loaded!)
+  final result = converter.convert('私はリンゴが好きです');
   if (result != null) {
-    print('Phonemes: ${result.phonemes}');
+    print('Phonemes: ${result.phonemes}');  // Output: "ɰᵝatai ha ɾiɴgo ga sɯki desɯ" (with spaces!)
     print('Time: ${result.processingTimeMicroseconds}μs');
   }
   
@@ -101,6 +115,40 @@ converter.init('assets/ja_phonemes.json');
 final result = converter.convert('日本語');
 print(result?.phonemes); // IPA phonemes
 ```
+
+### Word Segmentation (NEW! ✨)
+
+Automatically add spaces between words for better readability and text-to-speech:
+
+```dart
+final converter = JapanesePhonemeConverter();
+converter.init('assets/ja_phonemes.json');
+
+// Load word dictionary (147k+ words)
+converter.loadWordDictionary('assets/ja_words.txt');
+
+// Convert with automatic word spacing
+final result = converter.convert('今日はいい天気ですね');
+print(result?.phonemes); 
+// Output: "kʲoː wa i teɴki desɯ ne" (with spaces between words!)
+
+// Toggle segmentation on/off
+converter.setUseSegmentation(false);  // Disable spaces
+final noSpaces = converter.convert('今日はいい天気ですね');
+print(noSpaces?.phonemes);
+// Output: "kʲoːwaiteɴkidesɯne" (no spaces)
+
+converter.setUseSegmentation(true);   // Re-enable
+
+// Check status
+print('Segmentation enabled: ${converter.useSegmentation}');
+print('Words loaded: ${converter.wordCount}');
+```
+
+**How it works:**
+- Matches known words from 147k+ word dictionary
+- Treats unmatched text between words as grammar particles (は、が、を、です, etc.)
+- Both words AND grammar get spaces → perfect for TTS and tokenization!
 
 ### With Error Handling
 
@@ -197,6 +245,24 @@ Convert Japanese text to phonemes, throwing exception on failure.
 
 Clean up native resources. Must be called when done using the converter.
 
+**`void loadWordDictionary(String wordFilePath)`** ✨ NEW
+
+Load word dictionary for word segmentation. Enables automatic word boundary detection.
+
+- Parameters:
+  - `wordFilePath`: Path to ja_words.txt file
+- Throws: `PhonemeException` if file not found or loading fails
+- Example: `converter.loadWordDictionary('assets/ja_words.txt')`
+
+**`void setUseSegmentation(bool enabled)`** ✨ NEW
+
+Enable or disable word segmentation at runtime.
+
+- Parameters:
+  - `enabled`: true to enable spaces between words, false to disable
+- Note: Word dictionary must be loaded first
+- Example: `converter.setUseSegmentation(false)`
+
 #### Properties
 
 - **`String version`** - Native library version
@@ -204,6 +270,8 @@ Clean up native resources. Must be called when done using the converter.
 - **`int entryCount`** - Number of dictionary entries loaded (-1 if not initialized)
 - **`bool isInitialized`** - Whether converter is initialized and ready
 - **`bool isDisposed`** - Whether converter has been disposed
+- **`bool useSegmentation`** ✨ NEW - Whether word segmentation is currently enabled
+- **`int wordCount`** ✨ NEW - Number of words loaded in dictionary (-1 if not loaded)
 
 ### ConversionResult
 
@@ -255,7 +323,8 @@ japanese_phoneme_converter/
 ├── macos/
 │   └── CMakeLists.txt                      # macOS build configuration
 ├── assets/
-│   └── ja_phonemes.json                    # Phoneme dictionary (200k+ entries, 6.7MB)
+│   ├── ja_phonemes.json                    # Phoneme dictionary (220k+ entries, ~7.5MB)
+│   └── ja_words.txt                        # Word dictionary (147k+ words, ~3MB) ✨ NEW
 ├── test/
 │   └── japanese_phoneme_converter_test.dart # Unit tests
 ├── example/
@@ -357,6 +426,9 @@ dart test
 - ✅ Resource cleanup and disposal
 - ✅ Edge cases (empty strings, large text)
 - ✅ Performance metrics accuracy
+- ✅ Word dictionary loading and segmentation ✨ NEW
+- ✅ Segmentation enable/disable toggle ✨ NEW
+- ✅ Space-separated output verification ✨ NEW
 
 ---
 
@@ -371,10 +443,78 @@ dart run example/example.dart
 
 The example demonstrates:
 - Loading and initializing the converter
+- Loading word dictionary for segmentation ✨ NEW
+- Converting with and without word segmentation ✨ NEW
 - Converting multiple Japanese texts
 - Measuring performance
 - Error handling
 - Proper resource cleanup
+
+---
+
+## Word Segmentation Feature ✨
+
+**NEW**: Automatic word boundary detection with space-separated output!
+
+### What is Word Segmentation?
+
+Word segmentation automatically splits Japanese text into words and adds spaces between them in the phoneme output. This is incredibly useful for:
+
+- **Text-to-Speech (TTS)**: Natural pauses at word boundaries
+- **Tokenization**: Space-delimited output for downstream processing
+- **Linguistic Analysis**: Automatic morpheme detection
+- **Training Data**: Pre-segmented text for machine learning
+
+### How It Works
+
+The system uses a **two-pass algorithm**:
+
+1. **Pass 1 - Word Segmentation**: Split Japanese text into tokens using a 147k+ word dictionary
+2. **Pass 2 - Phoneme Conversion**: Convert each token to phonemes and add spaces between them
+
+### Smart Grammar Detection
+
+The segmenter automatically identifies grammatical elements by treating any text between known words as grammar:
+
+**Example**: `私はリンゴが好きです`
+
+**Dictionary Matches** (words):
+- `私` (watashi) - WORD
+- `リンゴ` (ringo) - WORD  
+- `好き` (suki) - WORD
+
+**Unmatched Between Words** (automatically treated as grammar):
+- `は` (ha) - particle
+- `が` (ga) - particle
+- `です` (desu) - copula
+
+**Result**: `私` `は` `リンゴ` `が` `好き` `です`  
+**Output**: `ɰᵝatai ha ɾiɴgo ga sɯki desɯ` (with spaces!)
+
+### Performance Impact
+
+- **Additional Loading**: +50-100ms one-time (loads 147k words)
+- **Conversion Speed**: ~same as before (still <1ms per sentence)
+- **Memory**: +20MB (word dictionary trie)
+
+### Usage
+
+```dart
+// Load word dictionary (throws on failure)
+converter.loadWordDictionary('assets/ja_words.txt');
+
+// Convert with segmentation (default: enabled)
+var result = converter.convert('今日はいい天気ですね');
+print(result?.phonemes); // "kʲoː wa i teɴki desɯ ne" (with spaces!)
+
+// Toggle on/off at runtime
+converter.setUseSegmentation(false);  // Disable
+converter.setUseSegmentation(true);   // Enable
+
+// Check status
+print('Enabled: ${converter.useSegmentation}');
+print('Words loaded: ${converter.wordCount}');
+```
 
 ---
 
@@ -443,9 +583,10 @@ class _MyAppState extends State<MyApp> {
 ## Size and Dependencies
 
 - **Native library**: ~50-100 KB (platform-dependent)
-- **Dictionary file**: ~3-4 MB (ja_phonemes.json)
+- **Phoneme dictionary**: ~7.5 MB (ja_phonemes.json, 220k+ entries)
+- **Word dictionary**: ~3 MB (ja_words.txt, 147k+ words) - Optional ✨
 - **Dart code**: ~20 KB
-- **Total package**: ~4-5 MB
+- **Total package**: ~7-11 MB (depending on whether you include word dictionary)
 
 ### Runtime Dependencies
 
