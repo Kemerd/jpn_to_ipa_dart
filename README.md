@@ -24,7 +24,7 @@ Add to your `pubspec.yaml`:
 dependencies:
   japanese_phoneme_converter:
     git:
-      url: https://github.com/Kemerd/japanese-phoneme-converter.git
+      url: https://github.com/Kemerd/jpn_to_ipa_dart.git
       ref: main  # or a specific tag like v1.0.0
 ```
 

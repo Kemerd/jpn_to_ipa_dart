@@ -32,3 +32,14 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC DART_SHARED_LIB)
 
+# ============================================================================
+# Installation and bundling for Flutter
+# ============================================================================
+
+# Install the framework to the bundled libraries location
+# This ensures Flutter copies it to the app bundle at build time
+set(japanese_phoneme_converter_bundled_libraries
+  $<TARGET_FILE:${PROJECT_NAME}>
+  PARENT_SCOPE
+)
+

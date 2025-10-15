@@ -24,3 +24,10 @@ target_link_libraries(${PROJECT_NAME} ${log-lib})
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC DART_SHARED_LIB)
 
+# ============================================================================
+# Installation and bundling for Flutter
+# ============================================================================
+
+# The library is automatically bundled by Flutter's Android build system
+# No additional configuration needed for Android FFI plugins
+
