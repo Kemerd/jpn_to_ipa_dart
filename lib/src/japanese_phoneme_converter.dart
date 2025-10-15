@@ -1,3 +1,4 @@
+import 'dart:convert'; // For utf8.decode
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'package:ffi/ffi.dart';
@@ -232,8 +233,11 @@ class JapanesePhonemeConverter {
         return null;
       }
 
+      // ✅ FIX: Properly decode UTF-8 bytes from C++ (not UTF-16 code units!)
+      // The C++ library returns UTF-8 encoded bytes, so we must use utf8.decode()
+      // instead of String.fromCharCodes() which treats bytes as UTF-16 code units
       final result = buffer.asTypedList(length);
-      final phonemes = String.fromCharCodes(result);
+      final phonemes = utf8.decode(result);
       final time = timePtr.value;
 
       return ConversionResult(
