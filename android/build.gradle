@@ -1,0 +1,59 @@
+// Flutter Android Plugin - Japanese Phoneme Converter
+
+group 'com.kemerd.japanese_phoneme_converter'
+version '1.0.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.3.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 33
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+        
+        // Native build configuration
+        externalNativeBuild {
+            cmake {
+                cppFlags '-std=c++17 -O3 -ffast-math'
+                arguments '-DANDROID_STL=c++_shared'
+            }
+        }
+        
+        ndk {
+            // Build for all Android ABIs
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+    }
+
+    // Point to our CMakeLists.txt
+    externalNativeBuild {
+        cmake {
+            path 'CMakeLists.txt'
+            version '3.18.1'
+        }
+    }
+}
+

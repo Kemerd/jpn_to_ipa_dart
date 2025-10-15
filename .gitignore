@@ -1,0 +1,40 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+pubspec.lock
+build/
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Native build artifacts
+native/build/
+native/cmake-build-*/
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test coverage
+coverage/
+.test_coverage.dart
+
+# Documentation
+doc/api/
+
