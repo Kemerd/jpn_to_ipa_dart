@@ -8,8 +8,10 @@ project(${PROJECT_NAME} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Android-specific optimizations
-add_compile_options(-O3 -ffast-math -funroll-loops)
+# Apply Android-specific optimizations only in Release mode
+if(CMAKE_BUILD_TYPE MATCHES Release)
+    add_compile_options(-O3 -ffast-math -funroll-loops)
+endif()
 
 # Build shared library for Android
 add_library(${PROJECT_NAME} SHARED

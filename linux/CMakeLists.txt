@@ -8,13 +8,15 @@ project(${PROJECT_NAME} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Aggressive optimization for release builds
+# Default to Release build if not specified
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Optimization flags
-add_compile_options(-O3 -march=native -ffast-math -funroll-loops)
+# Apply aggressive optimization flags only in Release mode
+if(CMAKE_BUILD_TYPE MATCHES Release)
+    add_compile_options(-O3 -march=native -ffast-math -funroll-loops)
+endif()
 
 # Build shared library
 add_library(${PROJECT_NAME} SHARED

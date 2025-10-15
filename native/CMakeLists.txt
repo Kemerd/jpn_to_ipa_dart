@@ -20,33 +20,44 @@ endif()
 # ============================================================================
 
 if(MSVC)
-    # Microsoft Visual C++ - Maximum optimization
+    # Microsoft Visual C++ - Apply optimizations only in Release mode
+    # Always apply warning level and UTF-8 encoding
     add_compile_options(
-        /O2          # Maximum optimization (speed)
-        /Ob2         # Inline function expansion
-        /Oi          # Enable intrinsic functions
-        /Ot          # Favor fast code
-        /GL          # Whole program optimization
-        /GF          # String pooling
-        /Gy          # Function-level linking
         /W4          # Warning level 4
         /utf-8       # UTF-8 source and execution charset
     )
-    # Link-time code generation for release builds
+    
+    # Release-specific optimizations (avoid conflicts with Debug runtime checks)
     if(CMAKE_BUILD_TYPE MATCHES Release)
+        add_compile_options(
+            /O2          # Maximum optimization (speed)
+            /Ob2         # Inline function expansion
+            /Oi          # Enable intrinsic functions
+            /Ot          # Favor fast code
+            /GL          # Whole program optimization
+            /GF          # String pooling
+            /Gy          # Function-level linking
+        )
+        # Link-time code generation for release builds
         add_link_options(/LTCG)
     endif()
 else()
-    # GCC/Clang - Aggressive optimization flags
+    # GCC/Clang - Always apply warning flags
     add_compile_options(
-        -O3                    # Maximum optimization
-        -march=native          # Optimize for host CPU architecture
-        -ffast-math           # Fast floating point math
-        -funroll-loops        # Loop unrolling
-        -fomit-frame-pointer  # Omit frame pointer for extra register
         -Wall                 # All warnings
         -Wextra              # Extra warnings
     )
+    
+    # Release-specific aggressive optimization flags
+    if(CMAKE_BUILD_TYPE MATCHES Release)
+        add_compile_options(
+            -O3                    # Maximum optimization
+            -march=native          # Optimize for host CPU architecture
+            -ffast-math           # Fast floating point math
+            -funroll-loops        # Loop unrolling
+            -fomit-frame-pointer  # Omit frame pointer for extra register
+        )
+    endif()
     
     # Platform-specific optimizations
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

@@ -9,9 +9,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Windows-specific optimizations (MSVC)
+# Apply optimizations only in Release mode to avoid conflicts with Debug runtime checks
 if(MSVC)
-    add_compile_options(/O2 /Ob2 /Oi /Ot /GL /utf-8)
+    # Always apply UTF-8 encoding
+    add_compile_options(/utf-8)
+    
+    # Release-specific optimizations
     if(CMAKE_BUILD_TYPE MATCHES Release)
+        add_compile_options(/O2 /Ob2 /Oi /Ot /GL)
         add_link_options(/LTCG)
     endif()
 endif()
