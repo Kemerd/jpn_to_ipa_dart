@@ -22,10 +22,33 @@ Add to your `pubspec.yaml`:
 ```yaml
 dependencies:
   japanese_phoneme_converter:
-    path: ../path/to/dart_ffi  # Or git URL when published
+    git:
+      url: https://github.com/Kemerd/japanese-phoneme-converter.git
+      ref: main  # or a specific tag like v1.0.0
 ```
 
 **That's it!** The native library will auto-build for your platform when you run `flutter run` or `flutter build`.
+
+### Dictionary File Setup
+
+You'll need the `ja_phonemes.json` dictionary file (~6.7MB). There are two ways to use it:
+
+**Option 1: Download to your app's assets**
+```yaml
+# In your app's pubspec.yaml
+flutter:
+  assets:
+    - assets/ja_phonemes.json
+```
+
+Download `ja_phonemes.json` from this repo's `assets/` folder and place it in your app's `assets/` directory.
+
+**Option 2: Use from package** (if you want to bundle it)
+```dart
+// Reference the dictionary from the package
+final packagePath = 'packages/japanese_phoneme_converter/assets/ja_phonemes.json';
+converter.init(packagePath);
+```
 
 ### No Manual Building Required!
 
@@ -64,82 +87,6 @@ void main() {
   converter.dispose();
 }
 ```
-
----
-
-## Building the Native Library
-
-### Prerequisites
-
-- **CMake** 3.15 or later: https://cmake.org/download/
-- **C++17 Compiler**:
-  - Windows: Visual Studio 2017+ or MinGW
-  - Linux: GCC 7+ or Clang 5+
-  - macOS: Xcode Command Line Tools
-
-### Quick Build
-
-**Windows:**
-```bash
-cd native
-build.bat
-```
-
-**Linux / macOS:**
-```bash
-cd native
-chmod +x build.sh
-./build.sh
-```
-
-### Manual Build Steps
-
-```bash
-cd native
-
-# Configure
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-
-# Build
-# Windows:
-cmake --build build --config Release
-
-# Linux/macOS:
-cmake --build build
-
-# Copy output to package root
-# Windows: copy build\Release\jpn_to_phoneme_ffi.dll ..\
-# Linux:   cp build/jpn_to_phoneme_ffi.so ../
-# macOS:   cp build/jpn_to_phoneme_ffi.dylib ../
-```
-
-### Output Files
-
-After building, you should have:
-- Windows: `dart_ffi/jpn_to_phoneme_ffi.dll`
-- Linux: `dart_ffi/jpn_to_phoneme_ffi.so`
-- macOS: `dart_ffi/jpn_to_phoneme_ffi.dylib`
-
-### Android Build
-
-For Android/Flutter apps, the native library builds automatically via Gradle.
-
-Add to `android/app/build.gradle`:
-
-```gradle
-android {
-    externalNativeBuild {
-        cmake {
-            path "../../native/CMakeLists.txt"
-            version "3.18.1"
-        }
-    }
-}
-```
-
-### iOS Build
-
-Add the native source `native/jpn_to_phoneme_ffi.cpp` to your Xcode project and link against the C++ standard library.
 
 ---
 
@@ -287,7 +234,7 @@ Exception thrown when phoneme conversion operations fail.
 ## Package Structure
 
 ```
-dart_ffi/
+japanese_phoneme_converter/
 ├── lib/
 │   ├── japanese_phoneme_converter.dart      # Main export file
 │   └── src/
@@ -295,12 +242,20 @@ dart_ffi/
 │       ├── conversion_result.dart           # Result data class
 │       └── phoneme_exception.dart           # Exception types
 ├── native/
-│   ├── jpn_to_phoneme_ffi.cpp              # C++ source (FFI compatible)
-│   ├── CMakeLists.txt                      # CMake build config
-│   ├── build.bat                           # Windows build script
-│   └── build.sh                            # Unix build script
+│   ├── jpn_to_phoneme_ffi.cpp              # C++ source (shared across platforms)
+│   └── CMakeLists.txt                      # Standalone build config (optional)
+├── android/
+│   └── CMakeLists.txt                      # Android build configuration
+├── ios/
+│   └── japanese_phoneme_converter.podspec  # iOS build configuration  
+├── windows/
+│   └── CMakeLists.txt                      # Windows build configuration
+├── linux/
+│   └── CMakeLists.txt                      # Linux build configuration
+├── macos/
+│   └── CMakeLists.txt                      # macOS build configuration
 ├── assets/
-│   └── ja_phonemes.json                    # Phoneme dictionary (200k+ entries)
+│   └── ja_phonemes.json                    # Phoneme dictionary (200k+ entries, 6.7MB)
 ├── test/
 │   └── japanese_phoneme_converter_test.dart # Unit tests
 ├── example/
@@ -341,19 +296,11 @@ The library uses aggressive optimizations:
 
 **Problem**: `Failed to load native library`
 
-**Solution**: Ensure the native library is in the correct location:
+**Solution**: This shouldn't happen with the FFI plugin setup. If it does:
 
-```dart
-// Option 1: Specify full path
-final converter = JapanesePhonemeConverter(
-  libraryPath: '/full/path/to/jpn_to_phoneme_ffi.dll'
-);
-
-// Option 2: Set environment variable
-// Windows: set PATH=%PATH%;C:\path\to\library
-// Linux:   export LD_LIBRARY_PATH=/path/to/library:$LD_LIBRARY_PATH
-// macOS:   export DYLD_LIBRARY_PATH=/path/to/library:$DYLD_LIBRARY_PATH
-```
+1. Make sure you're running in a Flutter app context (`flutter run`), not pure Dart
+2. Try `flutter clean` and rebuild
+3. For unit tests, the native library needs to be pre-built (tests run in Dart VM, not Flutter runtime)
 
 ### Initialization Failed
 
@@ -380,28 +327,16 @@ if (!converter.init('assets/ja_phonemes.json')) {
 - Dictionary JSON: Must be UTF-8 encoded
 - Input text: Should be UTF-8 strings (Dart default)
 
-### CMake Configuration Errors
+### Build Errors
 
-**Problem**: CMake fails to configure
+**Problem**: Native compilation fails during `flutter build`
 
 **Solution**:
-```bash
-# Update CMake
-# Install C++17 compiler
-# On Windows: Use Visual Studio Developer Command Prompt
-# On Linux: sudo apt-get install build-essential cmake
-# On macOS: xcode-select --install
-```
-
-### Build Fails on Windows
-
-**Problem**: MSBuild errors or compiler not found
-
-**Solution**: Use Visual Studio Developer Command Prompt or specify generator:
-```bash
-cmake -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-```
+- **Windows**: Ensure Visual Studio 2017+ with C++ tools is installed
+- **Linux**: Install build tools: `sudo apt-get install build-essential cmake`
+- **macOS**: Install Xcode command line tools: `xcode-select --install`
+- **Android**: Ensure NDK is installed via Android Studio
+- **iOS**: Ensure Xcode is installed and up to date
 
 ---
 
@@ -515,11 +450,11 @@ class _MyAppState extends State<MyApp> {
 ### Runtime Dependencies
 
 - `ffi: ^2.1.0` - Foreign Function Interface support
-- `path: ^1.8.3` - Path manipulation utilities
+- `flutter` - Flutter SDK
 
 ### No External Dependencies
 
-The native library is self-contained with no runtime dependencies.
+The native library is self-contained with no external C++ dependencies or system libraries required.
 
 ---
 

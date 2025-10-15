@@ -32,7 +32,3 @@ flutter:
       windows:
         ffiPlugin: true
 
-  # Include the phoneme dictionary
-  assets:
-    - assets/ja_phonemes.json
-
