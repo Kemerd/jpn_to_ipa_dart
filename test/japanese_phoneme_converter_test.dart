@@ -106,6 +106,100 @@ void main() {
       final exception = PhonemeException('test error');
       expect(exception.toString(), contains('test error'));
     });
+
+    group('Word Segmentation', () {
+      test('should load word dictionary successfully', () {
+        converter.init('assets/ja_phonemes.json');
+        
+        // Load word dictionary
+        converter.loadWordDictionary('assets/ja_words.txt');
+        
+        expect(converter.wordCount, greaterThan(0));
+      });
+
+      test('should throw exception when word dictionary file not found', () {
+        converter.init('assets/ja_phonemes.json');
+        
+        expect(
+          () => converter.loadWordDictionary('nonexistent.txt'),
+          throwsA(isA<PhonemeException>()),
+        );
+      });
+
+      test('should enable/disable word segmentation', () {
+        converter.init('assets/ja_phonemes.json');
+        converter.loadWordDictionary('assets/ja_words.txt');
+        
+        // Default should be enabled
+        expect(converter.useSegmentation, isTrue);
+        
+        // Disable segmentation
+        converter.setUseSegmentation(false);
+        expect(converter.useSegmentation, isFalse);
+        
+        // Re-enable
+        converter.setUseSegmentation(true);
+        expect(converter.useSegmentation, isTrue);
+      });
+
+      test('should add spaces when segmentation is enabled', () {
+        converter.init('assets/ja_phonemes.json');
+        converter.loadWordDictionary('assets/ja_words.txt');
+        
+        // Enable segmentation
+        converter.setUseSegmentation(true);
+        final withSpaces = converter.convert('私はリンゴが好きです');
+        
+        // Disable segmentation
+        converter.setUseSegmentation(false);
+        final withoutSpaces = converter.convert('私はリンゴが好きです');
+        
+        expect(withSpaces, isNotNull);
+        expect(withoutSpaces, isNotNull);
+        expect(withSpaces!.phonemes, contains(' '));
+        expect(withoutSpaces!.phonemes, isNot(contains(' ')));
+      });
+
+      test('should work without word dictionary loaded', () {
+        converter.init('assets/ja_phonemes.json');
+        
+        // Don't load word dictionary - segmentation should be disabled
+        expect(converter.wordCount, equals(-1));
+        
+        final result = converter.convert('こんにちは');
+        expect(result, isNotNull);
+        expect(result!.phonemes, isNotEmpty);
+      });
+
+      test('should handle word segmentation toggle without reload', () {
+        converter.init('assets/ja_phonemes.json');
+        converter.loadWordDictionary('assets/ja_words.txt');
+        
+        final testText = '今日はいい天気ですね';
+        
+        // With segmentation
+        converter.setUseSegmentation(true);
+        final result1 = converter.convert(testText);
+        
+        // Without segmentation
+        converter.setUseSegmentation(false);
+        final result2 = converter.convert(testText);
+        
+        // With segmentation again
+        converter.setUseSegmentation(true);
+        final result3 = converter.convert(testText);
+        
+        expect(result1, isNotNull);
+        expect(result2, isNotNull);
+        expect(result3, isNotNull);
+        
+        // Results with segmentation should match
+        expect(result1!.phonemes, equals(result3!.phonemes));
+        
+        // Results should differ based on segmentation
+        expect(result1.phonemes, isNot(equals(result2!.phonemes)));
+      });
+    });
   });
 }
 

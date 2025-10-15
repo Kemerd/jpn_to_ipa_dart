@@ -1,7 +1,6 @@
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'package:ffi/ffi.dart';
-import 'package:path/path.dart' as path;
 
 import 'conversion_result.dart';
 import 'phoneme_exception.dart';
@@ -43,6 +42,22 @@ typedef _CleanupDart = void Function();
 /// Native function: const char* jpn_phoneme_version()
 typedef _VersionNative = ffi.Pointer<Utf8> Function();
 typedef _VersionDart = ffi.Pointer<Utf8> Function();
+
+/// Native function: int jpn_phoneme_init_word_dict(const char* word_file_path)
+typedef _InitWordDictNative = ffi.Int32 Function(ffi.Pointer<Utf8> wordFilePath);
+typedef _InitWordDictDart = int Function(ffi.Pointer<Utf8> wordFilePath);
+
+/// Native function: void jpn_phoneme_set_use_segmentation(bool enabled)
+typedef _SetUseSegmentationNative = ffi.Void Function(ffi.Bool enabled);
+typedef _SetUseSegmentationDart = void Function(bool enabled);
+
+/// Native function: bool jpn_phoneme_get_use_segmentation()
+typedef _GetUseSegmentationNative = ffi.Bool Function();
+typedef _GetUseSegmentationDart = bool Function();
+
+/// Native function: int jpn_phoneme_get_word_count()
+typedef _GetWordCountNative = ffi.Int32 Function();
+typedef _GetWordCountDart = int Function();
 
 // ============================================================================
 // Japanese Phoneme Converter - Main Class
@@ -86,6 +101,10 @@ class JapanesePhonemeConverter {
   _GetEntryCountDart? _getEntryCount;
   _CleanupDart? _cleanup;
   _VersionDart? _version;
+  _InitWordDictDart? _initWordDict;
+  _SetUseSegmentationDart? _setUseSegmentation;
+  _GetUseSegmentationDart? _getUseSegmentation;
+  _GetWordCountDart? _getWordCount;
 
   bool _isInitialized = false;
   bool _isDisposed = false;
@@ -147,6 +166,18 @@ class JapanesePhonemeConverter {
         .asFunction();
     _version = lib
         .lookup<ffi.NativeFunction<_VersionNative>>('jpn_phoneme_version')
+        .asFunction();
+    _initWordDict = lib
+        .lookup<ffi.NativeFunction<_InitWordDictNative>>('jpn_phoneme_init_word_dict')
+        .asFunction();
+    _setUseSegmentation = lib
+        .lookup<ffi.NativeFunction<_SetUseSegmentationNative>>('jpn_phoneme_set_use_segmentation')
+        .asFunction();
+    _getUseSegmentation = lib
+        .lookup<ffi.NativeFunction<_GetUseSegmentationNative>>('jpn_phoneme_get_use_segmentation')
+        .asFunction();
+    _getWordCount = lib
+        .lookup<ffi.NativeFunction<_GetWordCountNative>>('jpn_phoneme_get_word_count')
         .asFunction();
   }
 
@@ -266,6 +297,70 @@ class JapanesePhonemeConverter {
 
   /// Whether the converter has been disposed.
   bool get isDisposed => _isDisposed;
+
+  /// Load word dictionary for word segmentation.
+  ///
+  /// This enables automatic word boundary detection, which adds spaces between
+  /// words in the phoneme output. The dictionary file should contain one word
+  /// per line in UTF-8 encoding.
+  ///
+  /// Throws [PhonemeException] if loading fails.
+  ///
+  /// Example:
+  /// ```dart
+  /// try {
+  ///   converter.loadWordDictionary('assets/ja_words.txt');
+  ///   print('Word dictionary loaded! Word count: ${converter.wordCount}');
+  /// } catch (e) {
+  ///   print('Failed to load dictionary: $e');
+  /// }
+  /// ```
+  void loadWordDictionary(String wordFilePath) {
+    _checkNotDisposed();
+
+    final pathPtr = wordFilePath.toNativeUtf8();
+    try {
+      final result = _initWordDict!(pathPtr);
+      if (result != 1) {
+        throw PhonemeException('Failed to load word dictionary: $lastError');
+      }
+    } finally {
+      malloc.free(pathPtr);
+    }
+  }
+
+  /// Enable or disable word segmentation.
+  ///
+  /// When enabled, the converter will add spaces between words in the output.
+  /// Word dictionary must be loaded via [loadWordDictionary] first.
+  ///
+  /// Default: `true` (enabled)
+  ///
+  /// Example:
+  /// ```dart
+  /// converter.setUseSegmentation(false);  // Disable spaces
+  /// converter.setUseSegmentation(true);   // Enable spaces
+  /// ```
+  void setUseSegmentation(bool enabled) {
+    _checkNotDisposed();
+    _setUseSegmentation!(enabled);
+  }
+
+  /// Check if word segmentation is currently enabled.
+  ///
+  /// Returns `true` if enabled, `false` otherwise.
+  bool get useSegmentation {
+    _checkNotDisposed();
+    return _getUseSegmentation!();
+  }
+
+  /// Get the number of words loaded in the word dictionary.
+  ///
+  /// Returns -1 if no word dictionary has been loaded.
+  int get wordCount {
+    _checkNotDisposed();
+    return _getWordCount!();
+  }
 
   /// Clean up native resources.
   ///
