@@ -16,7 +16,6 @@
 #include <sstream>
 #include <cstring>
 #include <cstdlib>
-#include <regex>
 
 // Cross-platform DLL export macro
 #ifdef _WIN32
@@ -408,6 +407,29 @@ public:
                 continue;
             }
             
+            // 🔥 CHECK FOR FURIGANA MARKERS (‹ U+2039)
+            // If we see a marker, grab everything until closing marker › as ONE unit
+            // This prevents breaking up marked names like ‹けんた›
+            if (cp == 0x2039) {
+                size_t marker_start = pos;
+                pos++; // Skip opening ‹
+                
+                // Find closing marker ›
+                while (pos < chars.size() && chars[pos] != 0x203A) {
+                    pos++;
+                }
+                
+                if (pos < chars.size() && chars[pos] == 0x203A) {
+                    pos++; // Include closing ›
+                }
+                
+                // Extract the entire marked section as a single unit
+                size_t start_byte = byte_positions[marker_start];
+                size_t end_byte = byte_positions[pos];
+                words.push_back(text.substr(start_byte, end_byte - start_byte));
+                continue; // Move to next token
+            }
+            
             // Try to find longest word match starting at current position
             size_t match_length = 0;
             TrieNode* current = root.get();
@@ -551,44 +573,103 @@ extern "C" DLL_EXPORT int jpn_phoneme_init(const char* json_file_path) {
  * This preserves furigana readings as single units during word segmentation.
  * Uses marker characters (U+2039/U+203A ‹›) that are unlikely in normal text.
  * 
- * Example: 健太「けんた」はバカ → ‹けんた›はバカ
+ * HOW IT WORKS:
+ * 1. Find patterns like: 健太「けんた」はバカ
+ * 2. Replace with markers: ‹けんた›はバカ
+ * 3. Markers prevent word segmentation from breaking up the name
+ * 4. Smart segmenter recognizes ‹けんた› as a "word" and treats は as a particle
+ * 5. Result: ‹けんた› は バカ (proper separation!)
+ * 6. Remove markers after processing: けんた は バカ ✅
  * 
- * The markers ensure the word segmenter treats けんた as a single unit,
- * even if it's not in the dictionary, producing: けんた、は、バカ
+ * WHY MARKERS ARE BRILLIANT:
+ * - No hardcoded particle lists needed (は、が、を、の、と, etc.)
+ * - Leverages existing smart segmentation algorithm
+ * - Grammar recognition is intrinsic, not explicit
+ * - Minimal code changes, maximum impact
  * 
- * @param text Input text with potential furigana hints
- * @return Text with furigana applied and marked for segmentation
+ * @param text Input text with potential furigana hints (e.g., 健太「けんた」)
+ * @return Text with furigana applied and marked for segmentation (e.g., ‹けんた›)
  */
 std::string process_furigana_hints(const std::string& text) {
-    std::string result = text;
+    // Manual parsing approach (more reliable than regex for UTF-8)
+    // Find patterns: kanji「reading」→ ‹reading›
+    // Example: 健太「けんた」はバカ → ‹けんた›はバカ
     
-    // Find and replace furigana patterns: text「reading」→ ‹reading›
-    // Using ‹ (U+2039) and › (U+203A) as markers
-    std::regex furigana_pattern(R"(([^「]+)「([^」]+)」)");
+    std::string output;
+    size_t pos = 0;
     
-    result = std::regex_replace(result, furigana_pattern, 
-        [](const std::smatch& match) -> std::string {
-            std::string furigana_reading = match[2].str();
-            
-            // Trim whitespace from reading
-            size_t start = furigana_reading.find_first_not_of(" \t\n\r");
-            size_t end = furigana_reading.find_last_not_of(" \t\n\r");
-            
-            if (start == std::string::npos) {
-                // Empty or whitespace-only reading, return original text
-                return match[1].str();
+    while (pos < text.length()) {
+        // Look for opening bracket 「 (U+300C: E3 80 8C in UTF-8)
+        size_t bracket_open = text.find("\u300C", pos);
+        
+        if (bracket_open == std::string::npos) {
+            // No more furigana hints, add rest of text
+            output += text.substr(pos);
+            break;
+        }
+        
+        // Look for closing bracket 」 (U+300D: E3 80 8D in UTF-8)
+        size_t bracket_close = text.find("\u300D", bracket_open);
+        
+        if (bracket_close == std::string::npos) {
+            // No closing bracket, add rest as-is
+            output += text.substr(pos);
+            break;
+        }
+        
+        // Find where the "word" (kanji) starts before the opening bracket
+        // Look backwards from bracket_open to find word boundary
+        // Word boundaries: start of string, space, or previous closing bracket」
+        size_t word_start = pos;
+        size_t search_pos = bracket_open;
+        
+        // Search backwards for word boundary
+        while (search_pos > pos) {
+            // Check for space or previous furigana bracket
+            if (search_pos >= 3) {
+                std::string check = text.substr(search_pos - 3, 3);
+                if (check == "\u300D" || check == " " || check == "\t" || check == "\n") {
+                    word_start = search_pos;
+                    break;
+                }
             }
             
-            furigana_reading = furigana_reading.substr(start, end - start + 1);
+            // Move back one byte (we'll iterate through UTF-8 boundaries naturally)
+            if (search_pos > 0) {
+                search_pos--;
+            } else {
+                break;
+            }
+        }
+        
+        // Add text from current position up to where the word/kanji starts
+        if (word_start > pos) {
+            output += text.substr(pos, word_start - pos);
+        }
+        
+        // Extract the furigana reading between「and 」
+        size_t reading_start = bracket_open + 3; // +3 bytes for UTF-8 encoded 「
+        size_t reading_length = bracket_close - reading_start;
+        std::string furigana_reading = text.substr(reading_start, reading_length);
+        
+        // Trim whitespace
+        size_t trim_start = furigana_reading.find_first_not_of(" \t\n\r");
+        size_t trim_end = furigana_reading.find_last_not_of(" \t\n\r");
+        
+        if (trim_start != std::string::npos && !furigana_reading.empty()) {
+            furigana_reading = furigana_reading.substr(trim_start, trim_end - trim_start + 1);
             
-            // Wrap reading in markers: ‹reading›
+            // Wrap in markers: ‹reading›
             // U+2039 = ‹ (single left-pointing angle quotation mark)
             // U+203A = › (single right-pointing angle quotation mark)
-            return "\u2039" + furigana_reading + "\u203A";
+            output += "\u2039" + furigana_reading + "\u203A";
         }
-    );
+        
+        // Move past the closing bracket (skip the kanji「reading」 entirely)
+        pos = bracket_close + 3; // +3 bytes for UTF-8 encoded 」
+    }
     
-    return result;
+    return output;
 }
 
 /**
