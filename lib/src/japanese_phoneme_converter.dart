@@ -14,6 +14,10 @@ import 'phoneme_exception.dart';
 typedef _InitNative = ffi.Int32 Function(ffi.Pointer<Utf8> jsonFilePath);
 typedef _InitDart = int Function(ffi.Pointer<Utf8> jsonFilePath);
 
+/// Native function: int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size)
+typedef _InitFromMemoryNative = ffi.Int32 Function(ffi.Pointer<ffi.Uint8> trieData, ffi.Int32 dataSize);
+typedef _InitFromMemoryDart = int Function(ffi.Pointer<ffi.Uint8> trieData, int dataSize);
+
 /// Native function: int jpn_phoneme_convert(...)
 typedef _ConvertNative = ffi.Int32 Function(
   ffi.Pointer<Utf8> japaneseText,
@@ -97,6 +101,7 @@ typedef _GetWordCountDart = int Function();
 class JapanesePhonemeConverter {
   ffi.DynamicLibrary? _lib;
   _InitDart? _init;
+  _InitFromMemoryDart? _initFromMemory;
   _ConvertDart? _convert;
   _GetErrorDart? _getError;
   _GetEntryCountDart? _getEntryCount;
@@ -153,6 +158,9 @@ class JapanesePhonemeConverter {
     _init = lib
         .lookup<ffi.NativeFunction<_InitNative>>('jpn_phoneme_init')
         .asFunction();
+    _initFromMemory = lib
+        .lookup<ffi.NativeFunction<_InitFromMemoryNative>>('jpn_phoneme_init_from_memory')
+        .asFunction();
     _convert = lib
         .lookup<ffi.NativeFunction<_ConvertNative>>('jpn_phoneme_convert')
         .asFunction();
@@ -203,6 +211,43 @@ class JapanesePhonemeConverter {
       return _isInitialized;
     } finally {
       malloc.free(pathPtr);
+    }
+  }
+
+  /// Initialize the converter from .trie data loaded in memory.
+  /// 🔥 BLAZING FAST: Use this to load .trie directly from Flutter assets!
+  ///
+  /// This is the preferred method for Flutter apps as it avoids file system access.
+  /// Load your .trie asset using rootBundle.load() and pass the bytes here.
+  ///
+  /// Returns `true` on success, `false` on failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// import 'package:flutter/services.dart';
+  /// 
+  /// final data = await rootBundle.load('assets/japanese.trie');
+  /// if (!converter.initFromMemory(data.buffer.asUint8List())) {
+  ///   print('Failed: ${converter.lastError}');
+  /// }
+  /// ```
+  bool initFromMemory(List<int> trieData) {
+    _checkNotDisposed();
+
+    // Allocate native memory for the data
+    final dataPtr = malloc<ffi.Uint8>(trieData.length);
+    try {
+      // Copy Dart list to native memory
+      final nativeList = dataPtr.asTypedList(trieData.length);
+      nativeList.setAll(0, trieData);
+      
+      // Call native function
+      final result = _initFromMemory!(dataPtr, trieData.length);
+      _isInitialized = result == 1;
+      return _isInitialized;
+    } finally {
+      // Free the allocated memory
+      malloc.free(dataPtr);
     }
   }
 

@@ -63,15 +63,22 @@ Just add the dependency and go!
 
 ## Quick Start
 
+### ⚡ IMPORTANT: For Flutter Apps, Use `initFromMemory()`!
+
+**Flutter apps CANNOT use file paths** because native C++ code cannot access Flutter's bundled assets directly. You **MUST** load the `.trie` file into memory first:
+
 ```dart
+import 'package:flutter/services.dart';
 import 'package:japanese_phoneme_converter/japanese_phoneme_converter.dart';
 
-void main() {
+Future<void> example() async {
   // Create converter instance
   final converter = JapanesePhonemeConverter();
   
-  // Initialize with binary trie (474k+ entries, includes phonemes + words)
-  if (!converter.init('assets/japanese.trie')) {
+  // 🔥 REQUIRED: Load .trie from assets into memory
+  final trieData = await rootBundle.load('assets/japanese.trie');
+  
+  if (!converter.initFromMemory(trieData.buffer.asUint8List())) {
     print('Failed to initialize: ${converter.lastError}');
     return;
   }
@@ -82,7 +89,7 @@ void main() {
   // Convert Japanese text with automatic word spacing!
   final result = converter.convert('私はリンゴが好きです');
   if (result != null) {
-    print('Phonemes: ${result.phonemes}');  // Output: "ɰᵝatai ha ɾiɴgo ga sɯki desɯ" (with spaces!)
+    print('Phonemes: ${result.phonemes}');
     print('Time: ${result.processingTimeMicroseconds}μs');
   }
   
@@ -91,18 +98,50 @@ void main() {
 }
 ```
 
+### For Non-Flutter Dart Apps (CLI Tools)
+
+If you're NOT using Flutter, you can use file paths:
+
+```dart
+import 'package:japanese_phoneme_converter/japanese_phoneme_converter.dart';
+
+void main() {
+  final converter = JapanesePhonemeConverter();
+  
+  // File path works for non-Flutter apps
+  if (!converter.init('path/to/japanese.trie')) {
+    print('Failed to initialize: ${converter.lastError}');
+    return;
+  }
+  
+  final result = converter.convert('日本語');
+  print(result?.phonemes);
+  
+  converter.dispose();
+}
+```
+
 ---
 
 ## Usage Examples
 
-### Basic Conversion
+### Basic Conversion (Flutter)
 
 ```dart
-final converter = JapanesePhonemeConverter();
-converter.init('assets/japanese.trie');  // Use binary format!
+import 'package:flutter/services.dart';
 
-final result = converter.convert('日本語');
-print(result?.phonemes); // IPA phonemes with automatic word spacing
+Future<void> convertText() async {
+  final converter = JapanesePhonemeConverter();
+  
+  // 🔥 Load from memory (REQUIRED for Flutter!)
+  final trieData = await rootBundle.load('assets/japanese.trie');
+  converter.initFromMemory(trieData.buffer.asUint8List());
+
+  final result = converter.convert('日本語');
+  print(result?.phonemes); // IPA phonemes with automatic word spacing
+  
+  converter.dispose();
+}
 ```
 
 ### Word Segmentation (Automatic! ✨)
@@ -110,25 +149,34 @@ print(result?.phonemes); // IPA phonemes with automatic word spacing
 The `.trie` format includes word segmentation automatically:
 
 ```dart
-final converter = JapanesePhonemeConverter();
-converter.init('assets/japanese.trie');  // Unified trie with 474k+ entries
+import 'package:flutter/services.dart';
 
-// Convert with automatic word spacing (enabled by default)
-final result = converter.convert('今日はいい天気ですね');
-print(result?.phonemes); 
-// Output: "kʲoː wa i teɴki desɯ ne" (with spaces between words!)
+Future<void> segmentationExample() async {
+  final converter = JapanesePhonemeConverter();
+  
+  // 🔥 Load from memory (REQUIRED for Flutter!)
+  final trieData = await rootBundle.load('assets/japanese.trie');
+  converter.initFromMemory(trieData.buffer.asUint8List());
 
-// Toggle segmentation on/off if needed
-converter.setUseSegmentation(false);  // Disable spaces
-final noSpaces = converter.convert('今日はいい天気ですね');
-print(noSpaces?.phonemes);
-// Output: "kʲoːwaiteɴkidesɯne" (no spaces)
+  // Convert with automatic word spacing (enabled by default)
+  final result = converter.convert('今日はいい天気ですね');
+  print(result?.phonemes); 
+  // Output: "kʲoː wa i teɴki desɯ ne" (with spaces between words!)
 
-converter.setUseSegmentation(true);   // Re-enable
+  // Toggle segmentation on/off if needed
+  converter.setUseSegmentation(false);  // Disable spaces
+  final noSpaces = converter.convert('今日はいい天気ですね');
+  print(noSpaces?.phonemes);
+  // Output: "kʲoːwaiteɴkidesɯne" (no spaces)
 
-// Check status
-print('Segmentation enabled: ${converter.useSegmentation}');
-print('Entries loaded: ${converter.entryCount}'); // 474k+ entries!
+  converter.setUseSegmentation(true);   // Re-enable
+
+  // Check status
+  print('Segmentation enabled: ${converter.useSegmentation}');
+  print('Entries loaded: ${converter.entryCount}'); // 474k+ entries!
+  
+  converter.dispose();
+}
 ```
 
 **How it works:**

@@ -215,30 +215,45 @@ public:
      * 🚀 100x faster than JSON parsing!
      */
     bool try_load_binary_format(const std::string& file_path) {
+        std::cerr << "[C++ DEBUG] Attempting to load .trie from: " << file_path << std::endl;
+        
         std::ifstream file(file_path, std::ios::binary);
         if (!file.is_open()) {
+            std::cerr << "[C++ DEBUG] Failed to open file!" << std::endl;
             return false;
         }
+        
+        std::cerr << "[C++ DEBUG] File opened successfully!" << std::endl;
         
         // Read magic number
         char magic[4];
         file.read(magic, 4);
+        std::cerr << "[C++ DEBUG] Magic bytes: " << magic[0] << magic[1] << magic[2] << magic[3] << std::endl;
+        
         if (memcmp(magic, "JPHO", 4) != 0) {
+            std::cerr << "[C++ DEBUG] Magic number mismatch! Expected JPHO" << std::endl;
             return false;
         }
+        
+        std::cerr << "[C++ DEBUG] Magic number OK!" << std::endl;
         
         // Read version
         uint16_t version_major, version_minor;
         file.read(reinterpret_cast<char*>(&version_major), 2);
         file.read(reinterpret_cast<char*>(&version_minor), 2);
         
+        std::cerr << "[C++ DEBUG] Version: " << version_major << "." << version_minor << std::endl;
+        
         if (version_major != 1 || version_minor != 0) {
+            std::cerr << "[C++ DEBUG] Version mismatch!" << std::endl;
             return false;
         }
         
         // Read entry count
         uint32_t entry_count_val;
         file.read(reinterpret_cast<char*>(&entry_count_val), 4);
+        
+        std::cerr << "[C++ DEBUG] Entry count from file: " << entry_count_val << std::endl;
         
         // Helper to read varint
         auto read_varint_from_file = [&file]() -> uint32_t {
@@ -255,6 +270,8 @@ public:
         };
         
         // Read all entries and insert into trie (same as JSON!)
+        std::cerr << "[C++ DEBUG] Starting to read " << entry_count_val << " entries..." << std::endl;
+        
         for (uint32_t i = 0; i < entry_count_val; i++) {
             // Read key
             uint32_t key_len = read_varint_from_file();
@@ -269,7 +286,14 @@ public:
             // Insert using SAME function as JSON!
             insert(key, value);
             entry_count++;
+            
+            // Log first few entries
+            if (i < 5) {
+                std::cerr << "[C++ DEBUG] Entry " << i << ": '" << key << "' -> '" << value << "'" << std::endl;
+            }
         }
+        
+        std::cerr << "[C++ DEBUG] Successfully loaded " << entry_count << " entries from .trie" << std::endl;
         
         return true;
     }
@@ -776,6 +800,169 @@ extern "C" DLL_EXPORT int jpn_phoneme_init(const char* json_file_path) {
     } catch (const std::exception& e) {
         snprintf(g_error_message, sizeof(g_error_message), 
                  "Exception during initialization: %s", e.what());
+        if (g_converter != nullptr) {
+            delete g_converter;
+            g_converter = nullptr;
+        }
+        return 0;
+    }
+}
+
+/**
+ * Initialize the phoneme converter from .trie data loaded in memory
+ * 🔥 BLAZING FAST: Load .trie directly from Flutter assets!
+ * 
+ * @param trie_data Pointer to .trie file data in memory
+ * @param data_size Size of the data in bytes
+ * @return 1 on success, 0 on failure
+ * 
+ * Example usage (Dart):
+ *   final data = await rootBundle.load('assets/japanese.trie');
+ *   final ptr = malloc<Uint8>(data.lengthInBytes);
+ *   ptr.asTypedList(data.lengthInBytes).setAll(0, data.buffer.asUint8List());
+ *   final result = jpn_phoneme_init_from_memory(ptr, data.lengthInBytes);
+ *   malloc.free(ptr);
+ */
+extern "C" DLL_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size) {
+    try {
+        // Clean up existing instance if any
+        if (g_converter != nullptr) {
+            delete g_converter;
+            g_converter = nullptr;
+        }
+        
+        // Create new converter instance
+        g_converter = new PhonemeConverter();
+        
+        std::cerr << "[C++ DEBUG] Loading .trie from memory, size: " << data_size << " bytes" << std::endl;
+        
+        // Load from memory buffer
+        const uint8_t* ptr = trie_data;
+        const uint8_t* end = trie_data + data_size;
+        
+        // Read magic number
+        if (ptr + 4 > end) {
+            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie data: too small");
+            delete g_converter;
+            g_converter = nullptr;
+            return 0;
+        }
+        
+        char magic[4];
+        memcpy(magic, ptr, 4);
+        ptr += 4;
+        
+        std::cerr << "[C++ DEBUG] Magic bytes: " << magic[0] << magic[1] << magic[2] << magic[3] << std::endl;
+        
+        if (memcmp(magic, "JPHO", 4) != 0) {
+            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie format: bad magic number");
+            delete g_converter;
+            g_converter = nullptr;
+            return 0;
+        }
+        
+        // Read version
+        if (ptr + 4 > end) {
+            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie data: truncated version");
+            delete g_converter;
+            g_converter = nullptr;
+            return 0;
+        }
+        
+        uint16_t version_major, version_minor;
+        memcpy(&version_major, ptr, 2);
+        ptr += 2;
+        memcpy(&version_minor, ptr, 2);
+        ptr += 2;
+        
+        std::cerr << "[C++ DEBUG] Version: " << version_major << "." << version_minor << std::endl;
+        
+        if (version_major != 1 || version_minor != 0) {
+            snprintf(g_error_message, sizeof(g_error_message), 
+                     "Unsupported .trie version: %d.%d", version_major, version_minor);
+            delete g_converter;
+            g_converter = nullptr;
+            return 0;
+        }
+        
+        // Read entry count
+        if (ptr + 4 > end) {
+            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie data: truncated entry count");
+            delete g_converter;
+            g_converter = nullptr;
+            return 0;
+        }
+        
+        uint32_t entry_count_val;
+        memcpy(&entry_count_val, ptr, 4);
+        ptr += 4;
+        
+        std::cerr << "[C++ DEBUG] Entry count: " << entry_count_val << std::endl;
+        
+        // Helper to read varint
+        auto read_varint = [&ptr, end]() -> uint32_t {
+            uint32_t value = 0;
+            int shift = 0;
+            while (ptr < end) {
+                uint8_t byte = *ptr++;
+                value |= (byte & 0x7F) << shift;
+                if ((byte & 0x80) == 0) break;
+                shift += 7;
+            }
+            return value;
+        };
+        
+        // Read all entries and insert into trie
+        for (uint32_t i = 0; i < entry_count_val; i++) {
+            if (ptr >= end) {
+                snprintf(g_error_message, sizeof(g_error_message), 
+                         "Invalid .trie data: truncated at entry %d", i);
+                delete g_converter;
+                g_converter = nullptr;
+                return 0;
+            }
+            
+            // Read key
+            uint32_t key_len = read_varint();
+            if (ptr + key_len > end) {
+                snprintf(g_error_message, sizeof(g_error_message), 
+                         "Invalid .trie data: truncated key at entry %d", i);
+                delete g_converter;
+                g_converter = nullptr;
+                return 0;
+            }
+            std::string key(reinterpret_cast<const char*>(ptr), key_len);
+            ptr += key_len;
+            
+            // Read value
+            uint32_t value_len = read_varint();
+            if (ptr + value_len > end) {
+                snprintf(g_error_message, sizeof(g_error_message), 
+                         "Invalid .trie data: truncated value at entry %d", i);
+                delete g_converter;
+                g_converter = nullptr;
+                return 0;
+            }
+            std::string value(reinterpret_cast<const char*>(ptr), value_len);
+            ptr += value_len;
+            
+            // Insert using same function as JSON!
+            g_converter->insert(key, value);
+            
+            // Log first few entries
+            if (i < 5) {
+                std::cerr << "[C++ DEBUG] Entry " << i << ": '" << key << "' -> '" << value << "'" << std::endl;
+            }
+        }
+        
+        std::cerr << "[C++ DEBUG] Successfully loaded " << g_converter->get_entry_count() 
+                  << " entries from memory" << std::endl;
+        
+        return 1;
+        
+    } catch (const std::exception& e) {
+        snprintf(g_error_message, sizeof(g_error_message), 
+                 "Exception loading .trie from memory: %s", e.what());
         if (g_converter != nullptr) {
             delete g_converter;
             g_converter = nullptr;
