@@ -72,6 +72,12 @@ endif()
 
 add_library(jpn_to_phoneme_ffi SHARED jpn_to_phoneme_ffi.cpp)
 
+# Link thread support library (not needed on Windows - uses native threads)
+if(NOT WIN32)
+    find_package(Threads REQUIRED)
+    target_link_libraries(jpn_to_phoneme_ffi PRIVATE Threads::Threads)
+endif()
+
 # Set library properties for cross-platform compatibility
 set_target_properties(jpn_to_phoneme_ffi PROPERTIES
     VERSION ${PROJECT_VERSION}
