@@ -324,6 +324,118 @@ public:
     }
     
     /**
+     * Load trie from binary data in memory
+     * 🔥 BLAZING FAST: Load directly from Flutter assets!
+     */
+    bool load_from_memory(const uint8_t* data, size_t data_size) {
+        const uint8_t* ptr = data;
+        const uint8_t* end = data + data_size;
+        
+        std::cerr << "[C++ DEBUG] Loading .trie from memory, size: " << data_size << " bytes" << std::endl;
+        
+        // Read magic number
+        if (ptr + 4 > end) {
+            std::cerr << "[C++ DEBUG] ERROR: Buffer too small for magic number" << std::endl;
+            return false;
+        }
+        char magic[4];
+        memcpy(magic, ptr, 4);
+        ptr += 4;
+        
+        std::cerr << "[C++ DEBUG] Magic bytes: " << magic[0] << magic[1] << magic[2] << magic[3] << std::endl;
+        
+        if (memcmp(magic, "JPHO", 4) != 0) {
+            std::cerr << "[C++ DEBUG] Magic number mismatch! Expected JPHO" << std::endl;
+            return false;
+        }
+        
+        std::cerr << "[C++ DEBUG] Magic number OK!" << std::endl;
+        
+        // Read version
+        if (ptr + 4 > end) {
+            std::cerr << "[C++ DEBUG] ERROR: Buffer too small for version" << std::endl;
+            return false;
+        }
+        uint16_t version_major, version_minor;
+        memcpy(&version_major, ptr, 2);
+        ptr += 2;
+        memcpy(&version_minor, ptr, 2);
+        ptr += 2;
+        
+        std::cerr << "[C++ DEBUG] Version: " << version_major << "." << version_minor << std::endl;
+        
+        if (version_major != 1 || version_minor != 0) {
+            std::cerr << "[C++ DEBUG] Version mismatch!" << std::endl;
+            return false;
+        }
+        
+        // Read entry count
+        if (ptr + 4 > end) {
+            std::cerr << "[C++ DEBUG] ERROR: Buffer too small for entry count" << std::endl;
+            return false;
+        }
+        uint32_t entry_count_val;
+        memcpy(&entry_count_val, ptr, 4);
+        ptr += 4;
+        
+        std::cerr << "[C++ DEBUG] Entry count: " << entry_count_val << std::endl;
+        
+        // Helper to read varint
+        auto read_varint = [&ptr, end]() -> uint32_t {
+            uint32_t value = 0;
+            int shift = 0;
+            while (ptr < end) {
+                uint8_t byte = *ptr++;
+                value |= (byte & 0x7F) << shift;
+                if ((byte & 0x80) == 0) break;
+                shift += 7;
+            }
+            return value;
+        };
+        
+        // Read all entries and insert into trie
+        std::cerr << "[C++ DEBUG] Starting to read " << entry_count_val << " entries..." << std::endl;
+        
+        for (uint32_t i = 0; i < entry_count_val; i++) {
+            if (ptr >= end) {
+                std::cerr << "[C++ DEBUG] ERROR: Ran out of buffer at entry " << i << std::endl;
+                return false;
+            }
+            
+            // Read key
+            uint32_t key_len = read_varint();
+            if (ptr + key_len > end) {
+                std::cerr << "[C++ DEBUG] ERROR: Buffer too small for key at entry " << i << std::endl;
+                return false;
+            }
+            std::string key(reinterpret_cast<const char*>(ptr), key_len);
+            ptr += key_len;
+            
+            // Read value
+            uint32_t value_len = read_varint();
+            if (ptr + value_len > end) {
+                std::cerr << "[C++ DEBUG] ERROR: Buffer too small for value at entry " << i << std::endl;
+                return false;
+            }
+            std::string value(reinterpret_cast<const char*>(ptr), value_len);
+            ptr += value_len;
+            
+            // Insert and INCREMENT counter!
+            insert(key, value);
+            entry_count++;
+            
+            // Log first few entries for debugging
+            if (i < 5) {
+                std::cerr << "[C++ DEBUG] Entry " << i << ": '" << key << "' -> '" << value << "'" << std::endl;
+            }
+        }
+        
+        std::cerr << "[C++ DEBUG] Successfully loaded " << entry_count << " entries from memory" << std::endl;
+        
+        return true;
+    }
+    
+    /**
      * Insert a Japanese text -> phoneme mapping into the trie
      * Uses character codes for maximum performance
      */
@@ -836,123 +948,13 @@ extern "C" DLL_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data,
         
         std::cerr << "[C++ DEBUG] Loading .trie from memory, size: " << data_size << " bytes" << std::endl;
         
-        // Load from memory buffer
-        const uint8_t* ptr = trie_data;
-        const uint8_t* end = trie_data + data_size;
-        
-        // Read magic number
-        if (ptr + 4 > end) {
-            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie data: too small");
-            delete g_converter;
-            g_converter = nullptr;
-            return 0;
-        }
-        
-        char magic[4];
-        memcpy(magic, ptr, 4);
-        ptr += 4;
-        
-        std::cerr << "[C++ DEBUG] Magic bytes: " << magic[0] << magic[1] << magic[2] << magic[3] << std::endl;
-        
-        if (memcmp(magic, "JPHO", 4) != 0) {
-            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie format: bad magic number");
-            delete g_converter;
-            g_converter = nullptr;
-            return 0;
-        }
-        
-        // Read version
-        if (ptr + 4 > end) {
-            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie data: truncated version");
-            delete g_converter;
-            g_converter = nullptr;
-            return 0;
-        }
-        
-        uint16_t version_major, version_minor;
-        memcpy(&version_major, ptr, 2);
-        ptr += 2;
-        memcpy(&version_minor, ptr, 2);
-        ptr += 2;
-        
-        std::cerr << "[C++ DEBUG] Version: " << version_major << "." << version_minor << std::endl;
-        
-        if (version_major != 1 || version_minor != 0) {
+        // 🔥 Use the class method which properly increments entry_count!
+        if (!g_converter->load_from_memory(trie_data, data_size)) {
             snprintf(g_error_message, sizeof(g_error_message), 
-                     "Unsupported .trie version: %d.%d", version_major, version_minor);
+                     "Failed to load .trie from memory");
             delete g_converter;
             g_converter = nullptr;
             return 0;
-        }
-        
-        // Read entry count
-        if (ptr + 4 > end) {
-            snprintf(g_error_message, sizeof(g_error_message), "Invalid .trie data: truncated entry count");
-            delete g_converter;
-            g_converter = nullptr;
-            return 0;
-        }
-        
-        uint32_t entry_count_val;
-        memcpy(&entry_count_val, ptr, 4);
-        ptr += 4;
-        
-        std::cerr << "[C++ DEBUG] Entry count: " << entry_count_val << std::endl;
-        
-        // Helper to read varint
-        auto read_varint = [&ptr, end]() -> uint32_t {
-            uint32_t value = 0;
-            int shift = 0;
-            while (ptr < end) {
-                uint8_t byte = *ptr++;
-                value |= (byte & 0x7F) << shift;
-                if ((byte & 0x80) == 0) break;
-                shift += 7;
-            }
-            return value;
-        };
-        
-        // Read all entries and insert into trie
-        for (uint32_t i = 0; i < entry_count_val; i++) {
-            if (ptr >= end) {
-                snprintf(g_error_message, sizeof(g_error_message), 
-                         "Invalid .trie data: truncated at entry %d", i);
-                delete g_converter;
-                g_converter = nullptr;
-                return 0;
-            }
-            
-            // Read key
-            uint32_t key_len = read_varint();
-            if (ptr + key_len > end) {
-                snprintf(g_error_message, sizeof(g_error_message), 
-                         "Invalid .trie data: truncated key at entry %d", i);
-                delete g_converter;
-                g_converter = nullptr;
-                return 0;
-            }
-            std::string key(reinterpret_cast<const char*>(ptr), key_len);
-            ptr += key_len;
-            
-            // Read value
-            uint32_t value_len = read_varint();
-            if (ptr + value_len > end) {
-                snprintf(g_error_message, sizeof(g_error_message), 
-                         "Invalid .trie data: truncated value at entry %d", i);
-                delete g_converter;
-                g_converter = nullptr;
-                return 0;
-            }
-            std::string value(reinterpret_cast<const char*>(ptr), value_len);
-            ptr += value_len;
-            
-            // Insert using same function as JSON!
-            g_converter->insert(key, value);
-            
-            // Log first few entries
-            if (i < 5) {
-                std::cerr << "[C++ DEBUG] Entry " << i << ": '" << key << "' -> '" << value << "'" << std::endl;
-            }
         }
         
         std::cerr << "[C++ DEBUG] Successfully loaded " << g_converter->get_entry_count() 
