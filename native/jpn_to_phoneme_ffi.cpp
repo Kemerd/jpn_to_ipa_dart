@@ -150,54 +150,6 @@ private:
         return c;
     }
     
-    // Simple JSON parser for our specific format
-    std::unordered_map<std::string, std::string> parse_json(const std::string& json_str) {
-        std::unordered_map<std::string, std::string> result;
-        
-        // Remove outer braces and whitespace
-        size_t start = json_str.find('{');
-        size_t end = json_str.rfind('}');
-        if (start == std::string::npos || end == std::string::npos) return result;
-        
-        std::string content = json_str.substr(start + 1, end - start - 1);
-        
-        // Parse key-value pairs
-        size_t pos = 0;
-        while (pos < content.length()) {
-            // Find key
-            size_t key_start = content.find('"', pos);
-            if (key_start == std::string::npos) break;
-            key_start++;
-            
-            size_t key_end = key_start;
-            while (key_end < content.length() && content[key_end] != '"') {
-                if (content[key_end] == '\\') key_end++;
-                key_end++;
-            }
-            if (key_end >= content.length()) break;
-            
-            std::string key = content.substr(key_start, key_end - key_start);
-            
-            // Find value
-            size_t value_start = content.find('"', key_end + 1);
-            if (value_start == std::string::npos) break;
-            value_start++;
-            
-            size_t value_end = value_start;
-            while (value_end < content.length() && content[value_end] != '"') {
-                if (value_end == '\\') value_end++;
-                value_end++;
-            }
-            if (value_end >= content.length()) break;
-            
-            std::string value = content.substr(value_start, value_end - value_start);
-            
-            result[key] = value;
-            pos = value_end + 1;
-        }
-        
-        return result;
-    }
 
 public:
     PhonemeConverter() : root(std::make_unique<TrieNode>()), entry_count(0) {}
@@ -294,31 +246,6 @@ public:
         }
         
         std::cerr << "[C++ DEBUG] Successfully loaded " << entry_count << " entries from .trie" << std::endl;
-        
-        return true;
-    }
-    
-    /**
-     * Build trie from JSON dictionary file
-     * Optimized for fast construction from large datasets
-     */
-    bool load_from_json(const std::string& file_path) {
-        std::ifstream file(file_path);
-        if (!file.is_open()) {
-            return false;
-        }
-        
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        std::string json_content = buffer.str();
-        
-        auto data = parse_json(json_content);
-        
-        // Insert each entry into the trie
-        for (const auto& entry : data) {
-            insert(entry.first, entry.second);
-            entry_count++;
-        }
         
         return true;
     }
@@ -866,15 +793,15 @@ struct FuriganaHint {
 };
 
 /**
- * Initialize the phoneme converter with a JSON dictionary file
+ * Initialize the phoneme converter with a .trie binary dictionary file
  * 
- * @param json_file_path Path to the ja_phonemes.json file (UTF-8 encoded)
+ * @param trie_file_path Path to the japanese.trie file (UTF-8 encoded)
  * @return 1 on success, 0 on failure
  * 
  * Example usage (Dart):
- *   final result = jpn_phoneme_init('ja_phonemes.json'.toNativeUtf8());
+ *   final result = jpn_phoneme_init('assets/japanese.trie'.toNativeUtf8());
  */
-extern "C" DLL_EXPORT int jpn_phoneme_init(const char* json_file_path) {
+extern "C" DLL_EXPORT int jpn_phoneme_init(const char* trie_file_path) {
     try {
         // Clean up existing instance if any
         if (g_converter != nullptr) {
@@ -885,24 +812,19 @@ extern "C" DLL_EXPORT int jpn_phoneme_init(const char* json_file_path) {
         // Create new converter instance
         g_converter = new PhonemeConverter();
         
-        // Try loading .trie first (replace .json with .trie in path)
-        std::string trie_path = std::string(json_file_path);
-        size_t json_pos = trie_path.rfind(".json");
-        if (json_pos != std::string::npos) {
-            trie_path.replace(json_pos, 5, ".trie");
-        } else {
-            trie_path = "japanese.trie";
-        }
-        
-        // Try binary format first (much faster!)
-        if (g_converter->try_load_binary_format(trie_path)) {
-            return 1;
-        }
-        
-        // Fallback to JSON if .trie not found
-        if (!g_converter->load_from_json(json_file_path)) {
+        // Load .trie format directly - no path manipulation, no JSON fallback, just raw power
+        if (!g_converter->try_load_binary_format(trie_file_path)) {
             snprintf(g_error_message, sizeof(g_error_message), 
-                     "Failed to load dictionary: %s", json_file_path);
+                     "Failed to load .trie file: %s", trie_file_path);
+            delete g_converter;
+            g_converter = nullptr;
+            return 0;
+        }
+        
+        // Verify that we actually loaded data
+        if (g_converter->get_entry_count() == 0) {
+            snprintf(g_error_message, sizeof(g_error_message), 
+                     ".trie file loaded but contains 0 entries: %s", trie_file_path);
             delete g_converter;
             g_converter = nullptr;
             return 0;
