@@ -16,6 +16,7 @@
 #include <sstream>
 #include <cstring>
 #include <cstdlib>
+#include <regex>
 
 // Cross-platform DLL export macro
 #ifdef _WIN32
@@ -545,6 +546,79 @@ extern "C" DLL_EXPORT int jpn_phoneme_init(const char* json_file_path) {
 }
 
 /**
+ * Process furigana hints by replacing text「reading」with special markers.
+ * 
+ * This preserves furigana readings as single units during word segmentation.
+ * Uses marker characters (U+2039/U+203A ‹›) that are unlikely in normal text.
+ * 
+ * Example: 健太「けんた」はバカ → ‹けんた›はバカ
+ * 
+ * The markers ensure the word segmenter treats けんた as a single unit,
+ * even if it's not in the dictionary, producing: けんた、は、バカ
+ * 
+ * @param text Input text with potential furigana hints
+ * @return Text with furigana applied and marked for segmentation
+ */
+std::string process_furigana_hints(const std::string& text) {
+    std::string result = text;
+    
+    // Find and replace furigana patterns: text「reading」→ ‹reading›
+    // Using ‹ (U+2039) and › (U+203A) as markers
+    std::regex furigana_pattern(R"(([^「]+)「([^」]+)」)");
+    
+    result = std::regex_replace(result, furigana_pattern, 
+        [](const std::smatch& match) -> std::string {
+            std::string furigana_reading = match[2].str();
+            
+            // Trim whitespace from reading
+            size_t start = furigana_reading.find_first_not_of(" \t\n\r");
+            size_t end = furigana_reading.find_last_not_of(" \t\n\r");
+            
+            if (start == std::string::npos) {
+                // Empty or whitespace-only reading, return original text
+                return match[1].str();
+            }
+            
+            furigana_reading = furigana_reading.substr(start, end - start + 1);
+            
+            // Wrap reading in markers: ‹reading›
+            // U+2039 = ‹ (single left-pointing angle quotation mark)
+            // U+203A = › (single right-pointing angle quotation mark)
+            return "\u2039" + furigana_reading + "\u203A";
+        }
+    );
+    
+    return result;
+}
+
+/**
+ * Remove furigana markers from text after processing.
+ * 
+ * Removes the ‹› markers used to preserve furigana readings as single units.
+ * This is called after word segmentation and phoneme conversion.
+ * 
+ * @param text Text with markers
+ * @return Text without markers
+ */
+std::string remove_furigana_markers(const std::string& text) {
+    std::string result = text;
+    
+    // Remove ‹ (U+2039) markers
+    size_t pos = 0;
+    while ((pos = result.find("\u2039", pos)) != std::string::npos) {
+        result.erase(pos, 3);  // UTF-8 encoding of U+2039 is 3 bytes
+    }
+    
+    // Remove › (U+203A) markers
+    pos = 0;
+    while ((pos = result.find("\u203A", pos)) != std::string::npos) {
+        result.erase(pos, 3);  // UTF-8 encoding of U+203A is 3 bytes
+    }
+    
+    return result;
+}
+
+/**
  * Convert Japanese text to phonemes
  * 
  * @param japanese_text Input Japanese text (UTF-8 encoded)
@@ -589,18 +663,26 @@ extern "C" DLL_EXPORT int jpn_phoneme_convert(
         auto start_time = std::chrono::high_resolution_clock::now();
         std::string result;
         
+        // Process furigana hints first: 健太「けんた」→ ‹けんた›
+        // This marks furigana readings as single units for the word segmenter
+        std::string processed_text = process_furigana_hints(japanese_text);
+        
         // Use word segmentation if enabled and word dictionary is loaded
         if (g_use_segmentation && g_word_segmenter != nullptr) {
             // Two-pass segmentation: 1) segment into words, 2) convert each word
-            auto words = g_word_segmenter->segment(japanese_text);
+            // The markers ‹› ensure furigana readings stay as single units
+            auto words = g_word_segmenter->segment(processed_text);
             for (size_t i = 0; i < words.size(); i++) {
                 if (i > 0) result += " ";  // Add space between words
                 result += g_converter->convert(words[i]);
             }
         } else {
             // Direct conversion without segmentation
-            result = g_converter->convert(japanese_text);
+            result = g_converter->convert(processed_text);
         }
+        
+        // Remove furigana markers from final output: ‹けんた› → けんた
+        result = remove_furigana_markers(result);
         
         auto end_time = std::chrono::high_resolution_clock::now();
         
