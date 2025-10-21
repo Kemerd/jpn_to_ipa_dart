@@ -13,17 +13,16 @@ void main() {
   print('📚 Library version: ${converter.version}');
   print('');
 
-  // Initialize with dictionary (adjust path as needed)
-  print('🔥 Loading phoneme dictionary...');
-  if (!converter.init('assets/ja_phonemes.json')) {
+  // 🚀 Initialize with bundled asset - just one line, no setup needed!
+  print('🔥 Loading phoneme dictionary from bundled asset...');
+  if (!await converter.init()) {
     print('❌ Initialization failed: ${converter.lastError}');
-    print('   Make sure ja_phonemes.json is in the correct location');
     return;
   }
 
   final entryCount = converter.entryCount;
   print('✅ Loaded $entryCount entries');
-  print('');
+  print('   💡 Asset loaded automatically from plugin bundle!');
 
   // Load word dictionary for segmentation
   print('🔥 Loading word dictionary for segmentation...');

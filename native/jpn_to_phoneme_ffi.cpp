@@ -2078,6 +2078,12 @@ FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_s
             throw std::runtime_error("Failed to load binary trie format from memory");
         }
         
+        // 🔥 Initialize segmenter for word spacing (uses phoneme trie as fallback)
+        // Binary trie contains both phonemes and words, so segmenter uses it directly
+        FFIState::segmenter = std::make_unique<WordSegmenter>();
+        // Note: We don't load ja_words.txt - the binary trie already contains words!
+        // The segmenter will use FFIState::converter->get_root() as phoneme fallback
+        
         return 1; // Success
         
     } catch (const std::exception& e) {

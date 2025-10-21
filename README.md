@@ -30,25 +30,10 @@ dependencies:
       ref: main  # or a specific tag like v1.0.0
 ```
 
-**That's it!** The native library will auto-build for your platform when you run `flutter run` or `flutter build`.
-
-### Dictionary File Setup
-
-**Use Binary Format (.trie) - Required for Production**
-```yaml
-# In your app's pubspec.yaml
-flutter:
-  assets:
-    - assets/japanese.trie    # Binary format - 474k+ entries, 100x faster!
-```
-
-That's it! The `.trie` file includes everything:
-- ✅ 474k+ entries (phonemes + words unified)
-- ✅ 100x faster loading (200-300ms vs 2-5s)
-- ✅ Smaller file size (~5.5MB vs ~10.5MB for JSON+words)
-- ✅ Word segmentation built-in
-
-**Don't ship JSON files in production!** The binary format is the only format you should use.
+**That's it!** 
+- The native library auto-builds for your platform
+- The dictionary file (`japanese.trie`) is **bundled automatically**
+- No asset setup needed in your app!
 
 ### No Manual Building Required!
 
@@ -63,22 +48,15 @@ Just add the dependency and go!
 
 ## Quick Start
 
-### ⚡ IMPORTANT: For Flutter Apps, Use `initFromMemory()`!
-
-**Flutter apps CANNOT use file paths** because native C++ code cannot access Flutter's bundled assets directly. You **MUST** load the `.trie` file into memory first:
-
 ```dart
-import 'package:flutter/services.dart';
 import 'package:japanese_phoneme_converter/japanese_phoneme_converter.dart';
 
 Future<void> example() async {
   // Create converter instance
   final converter = JapanesePhonemeConverter();
   
-  // 🔥 REQUIRED: Load .trie from assets into memory
-  final trieData = await rootBundle.load('assets/japanese.trie');
-  
-  if (!converter.initFromMemory(trieData.buffer.asUint8List())) {
+  // 🚀 Initialize - the dictionary is bundled automatically!
+  if (!await converter.init()) {
     print('Failed to initialize: ${converter.lastError}');
     return;
   }
@@ -98,44 +76,24 @@ Future<void> example() async {
 }
 ```
 
-### For Non-Flutter Dart Apps (CLI Tools)
-
-If you're NOT using Flutter, you can use file paths:
-
-```dart
-import 'package:japanese_phoneme_converter/japanese_phoneme_converter.dart';
-
-void main() {
-  final converter = JapanesePhonemeConverter();
-  
-  // File path works for non-Flutter apps
-  if (!converter.init('path/to/japanese.trie')) {
-    print('Failed to initialize: ${converter.lastError}');
-    return;
-  }
-  
-  final result = converter.convert('日本語');
-  print(result?.phonemes);
-  
-  converter.dispose();
-}
-```
+**That's all you need!** The plugin handles everything:
+- ✅ Loads bundled `japanese.trie` automatically
+- ✅ 474k+ entries (phonemes + words unified)
+- ✅ 100x faster than JSON (~200-300ms load time)
+- ✅ Word segmentation built-in
 
 ---
 
 ## Usage Examples
 
-### Basic Conversion (Flutter)
+### Basic Conversion
 
 ```dart
-import 'package:flutter/services.dart';
-
 Future<void> convertText() async {
   final converter = JapanesePhonemeConverter();
   
-  // 🔥 Load from memory (REQUIRED for Flutter!)
-  final trieData = await rootBundle.load('assets/japanese.trie');
-  converter.initFromMemory(trieData.buffer.asUint8List());
+  // Initialize with bundled asset
+  await converter.init();
 
   final result = converter.convert('日本語');
   print(result?.phonemes); // IPA phonemes with automatic word spacing
@@ -146,17 +104,14 @@ Future<void> convertText() async {
 
 ### Word Segmentation (Automatic! ✨)
 
-The `.trie` format includes word segmentation automatically:
+Word segmentation is automatically enabled:
 
 ```dart
-import 'package:flutter/services.dart';
-
 Future<void> segmentationExample() async {
   final converter = JapanesePhonemeConverter();
   
-  // 🔥 Load from memory (REQUIRED for Flutter!)
-  final trieData = await rootBundle.load('assets/japanese.trie');
-  converter.initFromMemory(trieData.buffer.asUint8List());
+  // Initialize with bundled asset
+  await converter.init();
 
   // Convert with automatic word spacing (enabled by default)
   final result = converter.convert('今日はいい天気ですね');
@@ -255,13 +210,14 @@ Creates a new converter instance. If `libraryPath` is not provided, the library 
 
 #### Methods
 
-**`bool init(String trieFilePath)`**
+**`Future<bool> init({String? assetPath})`**
 
-Initialize the converter with the binary trie file. Must be called before any conversion operations.
+Initialize the converter with the binary trie. Must be called before any conversion operations.
 
-- Returns: `true` on success, `false` on failure
-- Example: `converter.init('assets/japanese.trie')`
-- **Note**: Always use `.trie` format for production apps!
+- Returns: `Future<bool>` - `true` on success, `false` on failure
+- Example: `await converter.init()`
+- Optional: `assetPath` - override the default bundled asset path
+- **Note**: Automatically loads `japanese.trie` from plugin assets - no setup needed!
 
 **`ConversionResult? convert(String text, {int bufferSize = 4096})`**
 
@@ -422,17 +378,19 @@ The library uses aggressive optimizations:
 
 **Problem**: `init()` returns `false`
 
-**Solution**: Check the trie file path and error message:
+**Solution**: Check the error message:
 
 ```dart
-if (!converter.init('assets/japanese.trie')) {
+if (!await converter.init()) {
   print('Error: ${converter.lastError}');
   // Common issues:
-  // - File doesn't exist at the specified path
+  // - Asset not found (plugin asset should be automatic)
   // - File is not the correct binary format
-  // - Insufficient permissions to read file
+  // - Memory allocation failure (file too large?)
 }
 ```
+
+The plugin bundles `japanese.trie` automatically, so this should rarely happen!
 
 ### UTF-8 Encoding Issues
 

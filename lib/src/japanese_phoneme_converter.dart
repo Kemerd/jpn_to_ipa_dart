@@ -2,6 +2,7 @@ import 'dart:convert'; // For utf8.decode
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart'; // For rootBundle
 
 import 'conversion_result.dart';
 import 'phoneme_exception.dart';
@@ -190,18 +191,58 @@ class JapanesePhonemeConverter {
         .asFunction();
   }
 
-  /// Initialize the converter with a phoneme dictionary JSON file.
+  /// Initialize the converter with the binary trie.
   ///
-  /// This must be called before any conversion operations.
+  /// By default, loads `japanese.trie` bundled with this plugin.
+  /// No setup required in your app - the asset is included automatically!
+  ///
+  /// You can override with a custom asset path if needed.
+  ///
   /// Returns `true` on success, `false` on failure.
   ///
   /// Example:
   /// ```dart
-  /// if (!converter.init('assets/ja_phonemes.json')) {
+  /// // Use bundled asset (default)
+  /// if (!await converter.init()) {
+  ///   print('Failed: ${converter.lastError}');
+  /// }
+  ///
+  /// // Or use custom asset
+  /// if (!await converter.init(assetPath: 'assets/my_custom.trie')) {
   ///   print('Failed: ${converter.lastError}');
   /// }
   /// ```
-  bool init(String jsonFilePath) {
+  Future<bool> init({String? assetPath}) async {
+    _checkNotDisposed();
+
+    try {
+      // Default to plugin's bundled asset using package: scheme
+      final path = assetPath ?? 'packages/japanese_phoneme_converter/assets/japanese.trie';
+      
+      // Load trie from Flutter assets
+      final trieData = await rootBundle.load(path);
+      
+      // Convert to Uint8List with proper offset/length handling
+      final trieBytes = trieData.buffer.asUint8List(
+        trieData.offsetInBytes,
+        trieData.lengthInBytes,
+      );
+      
+      // Pass to native code
+      return initFromMemory(trieBytes);
+    } catch (e) {
+      // Store error for lastError getter
+      _lastInitError = 'Failed to load asset $assetPath: $e';
+      return false;
+    }
+  }
+  
+  String _lastInitError = '';
+  
+  /// Initialize the converter from file path (legacy method).
+  /// Prefer using [init] which loads from assets automatically.
+  @Deprecated('Use init() instead which loads from assets automatically')
+  bool initFromPath(String jsonFilePath) {
     _checkNotDisposed();
 
     final pathPtr = jsonFilePath.toNativeUtf8();

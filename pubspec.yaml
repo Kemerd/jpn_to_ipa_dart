@@ -1,6 +1,6 @@
 name: japanese_phoneme_converter
 description: Blazing fast Japanese to IPA phoneme converter using native FFI. Converts Japanese text to International Phonetic Alphabet representation with microsecond-level performance.
-version: 1.0.1
+version: 1.0.2
 homepage: https://github.com/Kemerd/japanese-phoneme-converter
 
 environment:
@@ -31,4 +31,8 @@ flutter:
         ffiPlugin: true
       windows:
         ffiPlugin: true
+  
+  # Bundle assets with the plugin - no app configuration needed!
+  assets:
+    - assets/japanese.trie
 
