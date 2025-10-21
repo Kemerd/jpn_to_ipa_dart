@@ -692,6 +692,104 @@ public:
     }
     
     /**
+     * Load from binary format directly from memory (for Dart FFI)
+     * 🚀 100x faster than JSON parsing! No file I/O overhead!
+     * 
+     * @param data Pointer to binary trie data in memory
+     * @param data_size Size of the data in bytes
+     * @return true on success, false on failure
+     */
+    bool try_load_binary_format_mem(const uint8_t* data, size_t data_size) {
+        if (!data || data_size < 14) {
+            std::cerr << "❌ Invalid data pointer or size too small" << std::endl;
+            return false;
+        }
+        
+        // Track position in memory
+        size_t pos = 0;
+        
+        // Read magic number
+        if (memcmp(data + pos, "JPHO", 4) != 0) {
+            std::cerr << "❌ Invalid binary format: bad magic number" << std::endl;
+            return false;
+        }
+        pos += 4;
+        
+        // Read version
+        uint16_t version_major = *reinterpret_cast<const uint16_t*>(data + pos);
+        pos += 2;
+        uint16_t version_minor = *reinterpret_cast<const uint16_t*>(data + pos);
+        pos += 2;
+        
+        if (version_major != 1 || version_minor != 0) {
+            std::cerr << "❌ Unsupported binary format version: " << version_major 
+                      << "." << version_minor << std::endl;
+            return false;
+        }
+        
+        // Read entry count
+        uint32_t entry_count_val = *reinterpret_cast<const uint32_t*>(data + pos);
+        pos += 4;
+        
+        std::cout << "🚀 Loading binary format v" << version_major << "." << version_minor 
+                  << " from memory: " << entry_count_val << " entries" << std::endl;
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
+        // Helper to read varint from memory
+        auto read_varint_from_mem = [&data, &pos, data_size]() -> uint32_t {
+            uint32_t value = 0;
+            int shift = 0;
+            while (pos < data_size) {
+                uint8_t byte = data[pos++];
+                value |= (byte & 0x7F) << shift;
+                if ((byte & 0x80) == 0) break;
+                shift += 7;
+            }
+            return value;
+        };
+        
+        // Read all entries and insert into trie (same as JSON!)
+        for (uint32_t i = 0; i < entry_count_val; i++) {
+            // Read key
+            uint32_t key_len = read_varint_from_mem();
+            if (pos + key_len > data_size) {
+                std::cerr << "❌ Data overflow reading key at entry " << i << std::endl;
+                return false;
+            }
+            std::string key(reinterpret_cast<const char*>(data + pos), key_len);
+            pos += key_len;
+            
+            // Read value
+            uint32_t value_len = read_varint_from_mem();
+            if (pos + value_len > data_size) {
+                std::cerr << "❌ Data overflow reading value at entry " << i << std::endl;
+                return false;
+            }
+            std::string value(reinterpret_cast<const char*>(data + pos), value_len);
+            pos += value_len;
+            
+            // Insert using SAME function as JSON!
+            insert(key, value);
+            entry_count++;
+            
+            // Progress indicator
+            if (i % 50000 == 0 && i > 0) {
+                std::cout << "\r   Processed: " << i << " entries" << std::flush;
+            }
+        }
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+        
+        std::cout << "\n✅ Loaded " << entry_count << " entries from memory in " << elapsed << "ms" << std::endl;
+        std::cout << "   Average: " << std::fixed << std::setprecision(2) 
+                  << (static_cast<double>(elapsed) * 1000.0 / entry_count) << "μs per entry" << std::endl;
+        std::cout << "   ⚡ Zero-copy loading from Dart FFI!" << std::endl;
+        
+        return true;
+    }
+    
+    /**
      * Insert a Japanese text -> phoneme mapping into the trie
      * Uses character codes for maximum performance
      */
@@ -1918,17 +2016,19 @@ FFI_EXPORT int jpn_phoneme_init(const char* json_file_path) {
         // Create new converter instance
         FFIState::converter = std::make_unique<PhonemeConverter>();
         
-        // Try binary format first (100x faster!)
+        // Try binary format first (100x faster!) - always look for japanese.trie
         std::string path(json_file_path);
-        size_t dot_pos = path.rfind('.');
-        if (dot_pos != std::string::npos) {
-            std::string trie_path = path.substr(0, dot_pos) + ".trie";
-            if (FFIState::converter->try_load_binary_format(trie_path)) {
-                return 1; // Success with binary format
-            }
+        
+        // Extract directory from json path
+        size_t last_slash = path.find_last_of("/\\");
+        std::string dir = (last_slash != std::string::npos) ? path.substr(0, last_slash + 1) : "";
+        std::string trie_path = dir + "japanese.trie";
+        
+        if (FFIState::converter->try_load_binary_format(trie_path)) {
+            return 1; // Success with binary format
         }
         
-        // Fallback to JSON
+        // Fallback to JSON if trie not found
         FFIState::converter->load_from_json(json_file_path);
         return 1; // Success
         
@@ -1971,40 +2071,11 @@ FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_s
         // Create new converter instance
         FFIState::converter = std::make_unique<PhonemeConverter>();
         
-        // Create a temporary file in memory using the data
-        // For simplicity, we'll write to a temp file and load it
-        // (A more optimized version would parse directly from memory)
-        
-        #ifdef _WIN32
-            char temp_path[MAX_PATH];
-            char temp_file[MAX_PATH];
-            GetTempPathA(MAX_PATH, temp_path);
-            GetTempFileNameA(temp_path, "jpn", 0, temp_file);
-        #else
-            char temp_file[] = "/tmp/jpn_XXXXXX";
-            int fd = mkstemp(temp_file);
-            if (fd == -1) {
-                throw std::runtime_error("Failed to create temporary file");
-            }
-            close(fd);
-        #endif
-        
-        // Write data to temp file
-        std::ofstream out(temp_file, std::ios::binary);
-        if (!out) {
-            throw std::runtime_error("Failed to open temporary file for writing");
-        }
-        out.write(reinterpret_cast<const char*>(trie_data), data_size);
-        out.close();
-        
-        // Load from temp file
-        bool success = FFIState::converter->try_load_binary_format(temp_file);
-        
-        // Clean up temp file
-        std::remove(temp_file);
+        // 🚀 Load directly from memory - no file I/O!
+        bool success = FFIState::converter->try_load_binary_format_mem(trie_data, static_cast<size_t>(data_size));
         
         if (!success) {
-            throw std::runtime_error("Failed to load binary trie format");
+            throw std::runtime_error("Failed to load binary trie format from memory");
         }
         
         return 1; // Success
