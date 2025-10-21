@@ -478,28 +478,53 @@ private:
     
     // Helper to extract UTF-8 code point from string
     uint32_t get_code_point(const std::string& str, size_t& pos) const {
+        if (pos >= str.length()) {
+            return 0; // End of string
+        }
+
         unsigned char c = str[pos];
-        
+
         if (c < 0x80) {
             pos++;
             return c;
         } else if ((c & 0xE0) == 0xC0) {
+            // Check bounds and validate continuation byte
+            if (pos + 1 >= str.length() || (str[pos + 1] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
             uint32_t cp = ((c & 0x1F) << 6) | (str[pos + 1] & 0x3F);
             pos += 2;
             return cp;
         } else if ((c & 0xF0) == 0xE0) {
+            // Check bounds and validate continuation bytes
+            if (pos + 2 >= str.length() ||
+                (str[pos + 1] & 0xC0) != 0x80 ||
+                (str[pos + 2] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
             uint32_t cp = ((c & 0x0F) << 12) | ((str[pos + 1] & 0x3F) << 6) | (str[pos + 2] & 0x3F);
             pos += 3;
             return cp;
         } else if ((c & 0xF8) == 0xF0) {
-            uint32_t cp = ((c & 0x07) << 18) | ((str[pos + 1] & 0x3F) << 12) | 
+            // Check bounds and validate continuation bytes
+            if (pos + 3 >= str.length() ||
+                (str[pos + 1] & 0xC0) != 0x80 ||
+                (str[pos + 2] & 0xC0) != 0x80 ||
+                (str[pos + 3] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
+            uint32_t cp = ((c & 0x07) << 18) | ((str[pos + 1] & 0x3F) << 12) |
                          ((str[pos + 2] & 0x3F) << 6) | (str[pos + 3] & 0x3F);
             pos += 4;
             return cp;
         }
-        
+
+        // Invalid UTF-8 byte - skip it and return replacement character
         pos++;
-        return c;
+        return 0xFFFD; // Unicode replacement character
     }
     
     // Helper to get character at UTF-8 position
@@ -584,7 +609,8 @@ public:
         
         auto data = parse_json(json_content);
         
-        std::cout << "🔥 Loading " << data.size() << " entries into trie..." << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "🔥 Loading " << data.size() << " entries into trie..." << std::endl;
         auto start_time = std::chrono::high_resolution_clock::now();
         
         // Insert each entry into the trie
@@ -594,16 +620,18 @@ public:
             
             // Progress indicator for large datasets
             if (entry_count % 50000 == 0) {
-                std::cout << "\r   Processed: " << entry_count << " entries" << std::flush;
+                // Suppress console output in FFI context
+                // std::cout << "\r   Processed: " << entry_count << " entries" << std::flush;
             }
         }
         
         auto end_time = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
         
-        std::cout << "\n✅ Loaded " << entry_count << " entries in " << elapsed << "ms" << std::endl;
-        std::cout << "   Average: " << std::fixed << std::setprecision(2) 
-                  << (static_cast<double>(elapsed) * 1000.0 / entry_count) << "μs per entry" << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "\n✅ Loaded " << entry_count << " entries in " << elapsed << "ms" << std::endl;
+        // std::cout << "   Average: " << std::fixed << std::setprecision(2) 
+        //           << (static_cast<double>(elapsed) * 1000.0 / entry_count) << "μs per entry" << std::endl;
     }
     
     /**
@@ -640,8 +668,9 @@ public:
         uint32_t entry_count_val;
         file.read(reinterpret_cast<char*>(&entry_count_val), 4);
         
-        std::cout << "🚀 Loading binary format v" << version_major << "." << version_minor 
-                  << ": " << entry_count_val << " entries" << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "🚀 Loading binary format v" << version_major << "." << version_minor 
+        //           << ": " << entry_count_val << " entries" << std::endl;
         auto start_time = std::chrono::high_resolution_clock::now();
         
         // Helper to read varint
@@ -674,19 +703,20 @@ public:
             insert(key, value);
             entry_count++;
             
-            // Progress indicator
+            // Progress indicator - disabled in FFI to avoid buffer corruption
             if (i % 50000 == 0 && i > 0) {
-                std::cout << "\r   Processed: " << i << " entries" << std::flush;
+                // std::cout << "\r   Processed: " << i << " entries" << std::flush;
             }
         }
         
         auto end_time = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
         
-        std::cout << "\n✅ Loaded " << entry_count << " entries in " << elapsed << "ms" << std::endl;
-        std::cout << "   Average: " << std::fixed << std::setprecision(2) 
-                  << (static_cast<double>(elapsed) * 1000.0 / entry_count) << "μs per entry" << std::endl;
-        std::cout << "   ⚡ Using SAME TrieNode* structure and traversal as JSON!" << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "\n✅ Loaded " << entry_count << " entries in " << elapsed << "ms" << std::endl;
+        // std::cout << "   Average: " << std::fixed << std::setprecision(2) 
+        //           << (static_cast<double>(elapsed) * 1000.0 / entry_count) << "μs per entry" << std::endl;
+        // std::cout << "   ⚡ Using SAME TrieNode* structure and traversal as JSON!" << std::endl;
         
         return true;
     }
@@ -731,8 +761,9 @@ public:
         uint32_t entry_count_val = *reinterpret_cast<const uint32_t*>(data + pos);
         pos += 4;
         
-        std::cout << "🚀 Loading binary format v" << version_major << "." << version_minor 
-                  << " from memory: " << entry_count_val << " entries" << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "🚀 Loading binary format v" << version_major << "." << version_minor 
+        //           << " from memory: " << entry_count_val << " entries" << std::endl;
         auto start_time = std::chrono::high_resolution_clock::now();
         
         // Helper to read varint from memory
@@ -772,19 +803,20 @@ public:
             insert(key, value);
             entry_count++;
             
-            // Progress indicator
+            // Progress indicator - disabled in FFI to avoid buffer corruption
             if (i % 50000 == 0 && i > 0) {
-                std::cout << "\r   Processed: " << i << " entries" << std::flush;
+                // std::cout << "\r   Processed: " << i << " entries" << std::flush;
             }
         }
         
         auto end_time = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
         
-        std::cout << "\n✅ Loaded " << entry_count << " entries from memory in " << elapsed << "ms" << std::endl;
-        std::cout << "   Average: " << std::fixed << std::setprecision(2) 
-                  << (static_cast<double>(elapsed) * 1000.0 / entry_count) << "μs per entry" << std::endl;
-        std::cout << "   ⚡ Zero-copy loading from Dart FFI!" << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "\n✅ Loaded " << entry_count << " entries from memory in " << elapsed << "ms" << std::endl;
+        // std::cout << "   Average: " << std::fixed << std::setprecision(2) 
+        //           << (static_cast<double>(elapsed) * 1000.0 / entry_count) << "μs per entry" << std::endl;
+        // std::cout << "   ⚡ Zero-copy loading from Dart FFI!" << std::endl;
         
         return true;
     }
@@ -1008,28 +1040,53 @@ private:
     
     // Helper to extract UTF-8 code point from string
     uint32_t get_code_point(const std::string& str, size_t& pos) const {
+        if (pos >= str.length()) {
+            return 0; // End of string
+        }
+
         unsigned char c = str[pos];
-        
+
         if (c < 0x80) {
             pos++;
             return c;
         } else if ((c & 0xE0) == 0xC0) {
+            // Check bounds and validate continuation byte
+            if (pos + 1 >= str.length() || (str[pos + 1] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
             uint32_t cp = ((c & 0x1F) << 6) | (str[pos + 1] & 0x3F);
             pos += 2;
             return cp;
         } else if ((c & 0xF0) == 0xE0) {
+            // Check bounds and validate continuation bytes
+            if (pos + 2 >= str.length() ||
+                (str[pos + 1] & 0xC0) != 0x80 ||
+                (str[pos + 2] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
             uint32_t cp = ((c & 0x0F) << 12) | ((str[pos + 1] & 0x3F) << 6) | (str[pos + 2] & 0x3F);
             pos += 3;
             return cp;
         } else if ((c & 0xF8) == 0xF0) {
-            uint32_t cp = ((c & 0x07) << 18) | ((str[pos + 1] & 0x3F) << 12) | 
+            // Check bounds and validate continuation bytes
+            if (pos + 3 >= str.length() ||
+                (str[pos + 1] & 0xC0) != 0x80 ||
+                (str[pos + 2] & 0xC0) != 0x80 ||
+                (str[pos + 3] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
+            uint32_t cp = ((c & 0x07) << 18) | ((str[pos + 1] & 0x3F) << 12) |
                          ((str[pos + 2] & 0x3F) << 6) | (str[pos + 3] & 0x3F);
             pos += 4;
             return cp;
         }
-        
+
+        // Invalid UTF-8 byte - skip it and return replacement character
         pos++;
-        return c;
+        return 0xFFFD; // Unicode replacement character
     }
 
 public:
@@ -1103,7 +1160,8 @@ public:
             throw std::runtime_error("Failed to open word file: " + file_path);
         }
         
-        std::cout << "🔥 Loading word dictionary for segmentation..." << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "🔥 Loading word dictionary for segmentation..." << std::endl;
         auto start_time = std::chrono::high_resolution_clock::now();
         
         std::string word;
@@ -1118,7 +1176,8 @@ public:
                 word_count++;
                 
                 if (word_count % 50000 == 0) {
-                    std::cout << "\r   Loaded: " << word_count << " words" << std::flush;
+                    // Suppress console output in FFI context
+                    // std::cout << "\r   Loaded: " << word_count << " words" << std::flush;
                 }
             }
         }
@@ -1126,7 +1185,8 @@ public:
         auto end_time = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
         
-        std::cout << "\n✅ Loaded " << word_count << " words in " << elapsed << "ms" << std::endl;
+        // Suppress console output in FFI context to avoid buffer corruption
+        // std::cout << "\n✅ Loaded " << word_count << " words in " << elapsed << "ms" << std::endl;
     }
     
     /**
@@ -1351,30 +1411,55 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
     std::vector<size_t> byte_positions;
     size_t byte_pos = 0;
     
-    // Helper lambda to get code point
+    // Helper lambda to get code point with proper bounds checking
     auto get_code_point_lambda = [](const std::string& str, size_t& pos) -> uint32_t {
+        if (pos >= str.length()) {
+            return 0; // End of string
+        }
+        
         unsigned char c = str[pos];
         
         if (c < 0x80) {
             pos++;
             return c;
         } else if ((c & 0xE0) == 0xC0) {
+            // Check bounds and validate continuation byte
+            if (pos + 1 >= str.length() || (str[pos + 1] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
             uint32_t cp = ((c & 0x1F) << 6) | (str[pos + 1] & 0x3F);
             pos += 2;
             return cp;
         } else if ((c & 0xF0) == 0xE0) {
+            // Check bounds and validate continuation bytes
+            if (pos + 2 >= str.length() ||
+                (str[pos + 1] & 0xC0) != 0x80 ||
+                (str[pos + 2] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
             uint32_t cp = ((c & 0x0F) << 12) | ((str[pos + 1] & 0x3F) << 6) | (str[pos + 2] & 0x3F);
             pos += 3;
             return cp;
         } else if ((c & 0xF8) == 0xF0) {
+            // Check bounds and validate continuation bytes
+            if (pos + 3 >= str.length() ||
+                (str[pos + 1] & 0xC0) != 0x80 ||
+                (str[pos + 2] & 0xC0) != 0x80 ||
+                (str[pos + 3] & 0xC0) != 0x80) {
+                pos++; // Skip invalid byte
+                return 0xFFFD; // Unicode replacement character
+            }
             uint32_t cp = ((c & 0x07) << 18) | ((str[pos + 1] & 0x3F) << 12) | 
                          ((str[pos + 2] & 0x3F) << 6) | (str[pos + 3] & 0x3F);
             pos += 4;
             return cp;
         }
         
+        // Invalid UTF-8 byte - skip it and return replacement character
         pos++;
-        return c;
+        return 0xFFFD; // Unicode replacement character
     };
     
     while (byte_pos < text.length()) {
