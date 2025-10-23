@@ -434,9 +434,126 @@ public:
     }
 };
 
-// Forward declaration for debug logger
-class FFIDebugLogger;
-extern FFIDebugLogger* g_logger_ptr;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DEBUG LOGGING (defined early so PhonemeConverter can use it)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Debug logger for FFI operations
+ * Writes to a file to trace issues without interfering with FFI communication
+ */
+class FFIDebugLogger {
+private:
+    std::ofstream log_file;
+    std::mutex log_mutex;
+    
+    std::string get_timestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto now_c = std::chrono::system_clock::to_time_t(now);
+        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+        
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S");
+        ss << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
+        return ss.str();
+    }
+    
+    void write_hex_dump(const uint8_t* data, size_t len, size_t max_len = 256) {
+        size_t dump_len = (len < max_len) ? len : max_len;
+        for (size_t i = 0; i < dump_len; i += 16) {
+            log_file << "      ";
+            // Hex values
+            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
+                log_file << std::hex << std::setw(2) << std::setfill('0') 
+                         << static_cast<int>(data[i + j]) << " ";
+            }
+            log_file << " | ";
+            // ASCII representation
+            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
+                char c = data[i + j];
+                log_file << (c >= 32 && c < 127 ? c : '.');
+            }
+            log_file << std::endl;
+        }
+        if (len > max_len) {
+            log_file << "      ... (" << (len - max_len) << " more bytes)" << std::endl;
+        }
+    }
+    
+public:
+    FFIDebugLogger() {
+        log_file.open("jpn_phoneme_ffi_debug.log", std::ios::out | std::ios::app);
+        log("[DEBUG] ===== FFI Debug Logger Started =====");
+    }
+    
+    ~FFIDebugLogger() {
+        if (log_file.is_open()) {
+            log("[DEBUG] ===== FFI Debug Logger Stopped =====");
+            log_file.close();
+        }
+    }
+    
+    void log(const std::string& message) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "[" << get_timestamp() << "] " << message << std::endl;
+            log_file.flush();
+        }
+    }
+    
+    void log_init_from_memory(const uint8_t* data, size_t size) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "[" << get_timestamp() << "] [INIT] Loading binary data from memory" << std::endl;
+            log_file << "  Size: " << size << " bytes" << std::endl;
+            log_file << "  Data pointer: " << static_cast<const void*>(data) << std::endl;
+            if (data && size >= 14) {
+                log_file << "  Magic: " << std::string(reinterpret_cast<const char*>(data), 4) << std::endl;
+                log_file << "  First 256 bytes (hex):" << std::endl;
+                write_hex_dump(data, size);
+            }
+            log_file.flush();
+        }
+    }
+    
+    void log_convert(const char* input, const std::string& output, int64_t time_us) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "[" << get_timestamp() << "] [CONVERT]" << std::endl;
+            log_file << "  Input: \"" << (input ? input : "NULL") << "\"" << std::endl;
+            if (input) {
+                log_file << "  Input bytes (hex): ";
+                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(input);
+                size_t len = strlen(input);
+                for (size_t i = 0; i < len && i < 64; i++) {
+                    log_file << std::hex << std::setw(2) << std::setfill('0') 
+                             << static_cast<int>(bytes[i]) << " ";
+                }
+                if (len > 64) log_file << "...";
+                log_file << std::endl;
+            }
+            log_file << "  Output: \"" << output << "\"" << std::endl;
+            log_file << "  Output length: " << output.length() << " bytes" << std::endl;
+            log_file << "  Time: " << std::dec << time_us << " μs" << std::endl;
+            log_file.flush();
+        }
+    }
+    
+    void log_segment_info(const std::vector<std::string>& words) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "  Segmented words (" << words.size() << "):" << std::endl;
+            for (size_t i = 0; i < words.size(); i++) {
+                log_file << "    [" << i << "] \"" << words[i] << "\"" << std::endl;
+            }
+            log_file.flush();
+        }
+    }
+};
+
+// Global logger instance pointer
+FFIDebugLogger* g_logger_ptr = nullptr;
 
 /**
  * High-performance trie node for phoneme lookup
@@ -1731,127 +1848,6 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
     
     return segments;
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// DEBUG LOGGING
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * Debug logger for FFI operations
- * Writes to a file to trace issues without interfering with FFI communication
- */
-class FFIDebugLogger {
-private:
-    std::ofstream log_file;
-    std::mutex log_mutex;
-    
-    std::string get_timestamp() {
-        auto now = std::chrono::system_clock::now();
-        auto now_c = std::chrono::system_clock::to_time_t(now);
-        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()) % 1000;
-        
-        std::stringstream ss;
-        ss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S");
-        ss << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
-        return ss.str();
-    }
-    
-    void write_hex_dump(const uint8_t* data, size_t len, size_t max_len = 256) {
-        size_t dump_len = (len < max_len) ? len : max_len;
-        for (size_t i = 0; i < dump_len; i += 16) {
-            log_file << "      ";
-            // Hex values
-            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
-                log_file << std::hex << std::setw(2) << std::setfill('0') 
-                         << static_cast<int>(data[i + j]) << " ";
-            }
-            log_file << " | ";
-            // ASCII representation
-            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
-                char c = data[i + j];
-                log_file << (c >= 32 && c < 127 ? c : '.');
-            }
-            log_file << std::endl;
-        }
-        if (len > max_len) {
-            log_file << "      ... (" << (len - max_len) << " more bytes)" << std::endl;
-        }
-    }
-    
-public:
-    FFIDebugLogger() {
-        log_file.open("jpn_phoneme_ffi_debug.log", std::ios::out | std::ios::app);
-        log("[DEBUG] ===== FFI Debug Logger Started =====");
-    }
-    
-    ~FFIDebugLogger() {
-        if (log_file.is_open()) {
-            log("[DEBUG] ===== FFI Debug Logger Stopped =====");
-            log_file.close();
-        }
-    }
-    
-    void log(const std::string& message) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "[" << get_timestamp() << "] " << message << std::endl;
-            log_file.flush();
-        }
-    }
-    
-    void log_init_from_memory(const uint8_t* data, size_t size) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "[" << get_timestamp() << "] [INIT] Loading binary data from memory" << std::endl;
-            log_file << "  Size: " << size << " bytes" << std::endl;
-            log_file << "  Data pointer: " << static_cast<const void*>(data) << std::endl;
-            if (data && size >= 14) {
-                log_file << "  Magic: " << std::string(reinterpret_cast<const char*>(data), 4) << std::endl;
-                log_file << "  First 256 bytes (hex):" << std::endl;
-                write_hex_dump(data, size);
-            }
-            log_file.flush();
-        }
-    }
-    
-    void log_convert(const char* input, const std::string& output, int64_t time_us) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "[" << get_timestamp() << "] [CONVERT]" << std::endl;
-            log_file << "  Input: \"" << (input ? input : "NULL") << "\"" << std::endl;
-            if (input) {
-                log_file << "  Input bytes (hex): ";
-                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(input);
-                size_t len = strlen(input);
-                for (size_t i = 0; i < len && i < 64; i++) {
-                    log_file << std::hex << std::setw(2) << std::setfill('0') 
-                             << static_cast<int>(bytes[i]) << " ";
-                }
-                if (len > 64) log_file << "...";
-                log_file << std::endl;
-            }
-            log_file << "  Output: \"" << output << "\"" << std::endl;
-            log_file << "  Output length: " << output.length() << " bytes" << std::endl;
-            log_file << "  Time: " << std::dec << time_us << " μs" << std::endl;
-            log_file.flush();
-        }
-    }
-    
-    void log_segment_info(const std::vector<std::string>& words) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "  Segmented words (" << words.size() << "):" << std::endl;
-            for (size_t i = 0; i < words.size(); i++) {
-                log_file << "    [" << i << "] \"" << words[i] << "\"" << std::endl;
-            }
-            log_file.flush();
-        }
-    }
-};
-
-// Global logger instance pointer (declared above, initialized here)
-FFIDebugLogger* g_logger_ptr = nullptr;
 
 /**
  * Helper functions for PhonemeConverter with word segmentation
