@@ -866,6 +866,11 @@ public:
             chars.push_back(get_code_point(japanese_text, byte_pos));
         }
         
+        if (g_logger_ptr && japanese_text.find("じかん") != std::string::npos) {
+            g_logger_ptr->log("[CONVERT_DEBUG] Processing text containing 'じかん': " + japanese_text);
+            g_logger_ptr->log("[CONVERT_DEBUG] Decoded to " + std::to_string(chars.size()) + " code points");
+        }
+        
         std::string result;
         size_t pos = 0;
         
@@ -880,6 +885,9 @@ public:
             for (size_t i = pos; i < chars.size() && current != nullptr; i++) {
                 auto it = current->children.find(chars[i]);
                 if (it == current->children.end()) {
+                    if (g_logger_ptr && japanese_text.find("じかん") != std::string::npos) {
+                        g_logger_ptr->log("[CONVERT_DEBUG] No child found for code point at i=" + std::to_string(i));
+                    }
                     break;
                 }
                 
@@ -889,6 +897,11 @@ public:
                 if (current->phoneme.has_value()) {
                     match_length = i - pos + 1;
                     matched_phoneme = current->phoneme;
+                    if (g_logger_ptr && japanese_text.find("じかん") != std::string::npos) {
+                        g_logger_ptr->log("[CONVERT_DEBUG] Found match at i=" + std::to_string(i) + 
+                                        ", match_length=" + std::to_string(match_length) + 
+                                        ", phoneme=\"" + matched_phoneme.value() + "\"");
+                    }
                 }
             }
             
