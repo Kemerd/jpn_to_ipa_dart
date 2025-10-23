@@ -1838,7 +1838,17 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
         if (word_start > pos) {
             size_t start_byte = byte_positions[pos];
             size_t end_byte = byte_positions[word_start];
-            segments.push_back(TextSegment(text.substr(start_byte, end_byte - start_byte), start_byte));
+            std::string between_text = text.substr(start_byte, end_byte - start_byte);
+            if (g_logger_ptr) {
+                g_logger_ptr->log("[PARSE] Adding text between hints: \"" + between_text + 
+                          "\" (pos=" + std::to_string(pos) + ", word_start=" + std::to_string(word_start) + ")");
+            }
+            segments.push_back(TextSegment(between_text, start_byte));
+        } else {
+            if (g_logger_ptr) {
+                g_logger_ptr->log("[PARSE] NOT adding text (word_start=" + std::to_string(word_start) + 
+                          " <= pos=" + std::to_string(pos) + ")");
+            }
         }
         
         // Extract the kanji and reading using pre-decoded positions
@@ -2000,13 +2010,21 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
                         if (try_start > word_start) {
                             size_t prefix_start_byte = byte_positions[word_start];
                             size_t prefix_end_byte = byte_positions[try_start];
-                            segments.push_back(TextSegment(text.substr(prefix_start_byte, prefix_end_byte - prefix_start_byte), prefix_start_byte));
+                            std::string prefix_text = text.substr(prefix_start_byte, prefix_end_byte - prefix_start_byte);
+                            if (g_logger_ptr) {
+                                g_logger_ptr->log("[PARSE] Smart backtracking: Adding PREFIX as normal text: \"" + prefix_text + "\"");
+                            }
+                            segments.push_back(TextSegment(prefix_text, prefix_start_byte));
                         }
                         
                         // Update kanji to only include the suffix
                         kanji_start_byte = try_start_byte;
                         kanji = kanji_substr;
                         word_start = try_start;
+                        
+                        if (g_logger_ptr) {
+                            g_logger_ptr->log("[PARSE] Smart backtracking: Kanji updated to suffix: \"" + kanji + "\"");
+                        }
                         
                         // Found our split point, stop searching!
                         break;
@@ -2070,8 +2088,28 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
         
         if (!used_compound) {
             // No compound found, use the furigana hint
+            if (g_logger_ptr) {
+                g_logger_ptr->log("[PARSE] Adding furigana hint: text=\"" + kanji + "\", reading=\"" + reading + "\"");
+            }
             segments.push_back(TextSegment(kanji, reading, kanji_start_byte));
             pos = bracket_close + 1;
+        } else {
+            if (g_logger_ptr) {
+                g_logger_ptr->log("[PARSE] Used compound, advanced to pos=" + std::to_string(pos));
+            }
+        }
+    }
+    
+    // Log final segments for debugging
+    if (g_logger_ptr) {
+        g_logger_ptr->log("[PARSE] Final segments (" + std::to_string(segments.size()) + "):");
+        for (size_t i = 0; i < segments.size(); i++) {
+            if (segments[i].type == SegmentType::FURIGANA_HINT) {
+                g_logger_ptr->log("  [" + std::to_string(i) + "] FURIGANA: text=\"" + segments[i].text + 
+                          "\", reading=\"" + segments[i].reading + "\"");
+            } else {
+                g_logger_ptr->log("  [" + std::to_string(i) + "] NORMAL: \"" + segments[i].text + "\"");
+            }
         }
     }
     
