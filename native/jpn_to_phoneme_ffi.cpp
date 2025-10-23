@@ -1737,13 +1737,15 @@ namespace SegmentedConversion {
         // 見「み」て → [TextSegment("見て")] (compound word detected)
         auto segments = parse_furigana_segments(japanese_text, &segmenter);
         
-        g_logger.log("[SEGMENT] Parsed " + std::to_string(segments.size()) + " segments from: " + japanese_text);
-        for (size_t i = 0; i < segments.size(); i++) {
-            if (segments[i].type == SegmentType::FURIGANA_HINT) {
-                g_logger.log("  [" + std::to_string(i) + "] FURIGANA: text=\"" + segments[i].text + 
-                           "\" reading=\"" + segments[i].reading + "\"");
-            } else {
-                g_logger.log("  [" + std::to_string(i) + "] NORMAL: \"" + segments[i].text + "\"");
+        if (g_logger_ptr) {
+            g_logger_ptr->log("[SEGMENT] Parsed " + std::to_string(segments.size()) + " segments from: " + japanese_text);
+            for (size_t i = 0; i < segments.size(); i++) {
+                if (segments[i].type == SegmentType::FURIGANA_HINT) {
+                    g_logger_ptr->log("  [" + std::to_string(i) + "] FURIGANA: text=\"" + segments[i].text + 
+                               "\" reading=\"" + segments[i].reading + "\"");
+                } else {
+                    g_logger_ptr->log("  [" + std::to_string(i) + "] NORMAL: \"" + segments[i].text + "\"");
+                }
             }
         }
         
@@ -1751,7 +1753,9 @@ namespace SegmentedConversion {
         // Furigana segments are treated as atomic units
         auto words = segmenter.segment_from_segments(segments, converter.get_root());
         
-        g_logger.log_segment_info(words);
+        if (g_logger_ptr) {
+            g_logger_ptr->log_segment_info(words);
+        }
         
         // 🔥 STEP 3: Convert each word to phonemes with particle handling
         std::string result;
@@ -1761,11 +1765,15 @@ namespace SegmentedConversion {
             // Special handling for the topic particle は → "wa"
             if (words[i] == "は" || words[i] == "\xe3\x81\xaf") {  // は in UTF-8
                 result += "wa";
-                g_logger.log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"wa\" (particle)");
+                if (g_logger_ptr) {
+                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"wa\" (particle)");
+                }
             } else {
                 std::string phoneme = converter.convert(words[i]);
                 result += phoneme;
-                g_logger.log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"" + phoneme + "\"");
+                if (g_logger_ptr) {
+                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"" + phoneme + "\"");
+                }
             }
         }
         
@@ -2074,7 +2082,7 @@ private:
     }
     
     void write_hex_dump(const uint8_t* data, size_t len, size_t max_len = 256) {
-        size_t dump_len = std::min(len, max_len);
+        size_t dump_len = (len < max_len) ? len : max_len;
         for (size_t i = 0; i < dump_len; i += 16) {
             log_file << "      ";
             // Hex values
@@ -2166,8 +2174,9 @@ public:
     }
 };
 
-// Global logger instance
-static FFIDebugLogger g_logger;
+// Forward declare logger so it can be used everywhere
+class FFIDebugLogger;
+static FFIDebugLogger* g_logger_ptr = nullptr;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // GLOBAL STATE MANAGEMENT
@@ -2294,8 +2303,15 @@ FFI_EXPORT int jpn_phoneme_init(const char* json_file_path) {
 FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size) {
     std::lock_guard<std::mutex> lock(FFIState::init_mutex);
     
-    g_logger.log("[INIT_FROM_MEMORY] Called with data_size=" + std::to_string(data_size));
-    g_logger.log_init_from_memory(trie_data, static_cast<size_t>(data_size));
+    // Initialize logger on first call
+    if (!g_logger_ptr) {
+        g_logger_ptr = new FFIDebugLogger();
+    }
+    
+    if (g_logger_ptr) {
+        g_logger_ptr->log("[INIT_FROM_MEMORY] Called with data_size=" + std::to_string(data_size));
+        g_logger_ptr->log_init_from_memory(trie_data, static_cast<size_t>(data_size));
+    }
     
     try {
         // Clear any previous error
@@ -2317,8 +2333,10 @@ FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_s
         // Note: We don't load ja_words.txt - the binary trie already contains words!
         // The segmenter will use FFIState::converter->get_root() as phoneme fallback
         
-        g_logger.log("[INIT_FROM_MEMORY] Success! Loaded " + std::to_string(FFIState::converter->get_entry_count()) + " entries");
-        g_logger.log("[INIT_FROM_MEMORY] Word segmentation enabled: " + std::string(FFIState::use_segmentation ? "true" : "false"));
+        if (g_logger_ptr) {
+            g_logger_ptr->log("[INIT_FROM_MEMORY] Success! Loaded " + std::to_string(FFIState::converter->get_entry_count()) + " entries");
+            g_logger_ptr->log("[INIT_FROM_MEMORY] Word segmentation enabled: " + std::string(FFIState::use_segmentation ? "true" : "false"));
+        }
         
         return 1; // Success
         
@@ -2377,12 +2395,16 @@ FFI_EXPORT int jpn_phoneme_convert(
         // Perform conversion
         std::string result;
         if (FFIState::use_segmentation && FFIState::segmenter) {
-            g_logger.log("[CONVERT] Using segmented conversion for: " + std::string(japanese_text));
+            if (g_logger_ptr) {
+                g_logger_ptr->log("[CONVERT] Using segmented conversion for: " + std::string(japanese_text));
+            }
             result = SegmentedConversion::convert_with_segmentation(
                 *FFIState::converter, japanese_text, *FFIState::segmenter
             );
         } else {
-            g_logger.log("[CONVERT] Using direct conversion for: " + std::string(japanese_text));
+            if (g_logger_ptr) {
+                g_logger_ptr->log("[CONVERT] Using direct conversion for: " + std::string(japanese_text));
+            }
             result = FFIState::converter->convert(japanese_text);
         }
         
@@ -2393,7 +2415,9 @@ FFI_EXPORT int jpn_phoneme_convert(
         ).count();
         
         // Log the conversion result
-        g_logger.log_convert(japanese_text, result, elapsed);
+        if (g_logger_ptr) {
+            g_logger_ptr->log_convert(japanese_text, result, elapsed);
+        }
         
         if (processing_time_us) {
             *processing_time_us = elapsed;
