@@ -1894,13 +1894,112 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
         size_t trimmed_end_byte = byte_positions[reading_start + trim_end];
         reading = text.substr(trimmed_start_byte, trimmed_end_byte - trimmed_start_byte);
         
+        // 🔥 SMART COMPOUND-AWARE KANJI BOUNDARY DETECTION
+        // Instead of using word_start as-is, iterate through all possible kanji start positions
+        // and find the one that forms the LONGEST compound with text after bracket
+        // This solves cases like 一つだけ持「も」っています where we need to find 持っています
+        size_t best_kanji_start = word_start;
+        size_t best_compound_length = 0;
+        size_t after_bracket = bracket_close + 1;
+        
+        if ((segmenter || phoneme_root) && after_bracket < chars.size()) {
+            if (g_logger_ptr) {
+                size_t after_debug_start = byte_positions[after_bracket];
+                size_t after_debug_limit = (after_bracket + 10 < chars.size()) ? after_bracket + 10 : chars.size();
+                size_t after_debug_end = byte_positions[after_debug_limit];
+                std::string after_text = text.substr(after_debug_start, after_debug_end - after_debug_start);
+                g_logger_ptr->log("[PARSE] Text after bracket: \"" + after_text + "\"");
+                g_logger_ptr->log("[PARSE] Checking for compound words starting from different positions...");
+            }
+            
+            for (size_t try_start = word_start; try_start < bracket_open; try_start++) {
+                if (g_logger_ptr) {
+                    size_t kanji_debug_start = byte_positions[try_start];
+                    size_t kanji_debug_end = byte_positions[bracket_open];
+                    std::string kanji_from_here = text.substr(kanji_debug_start, kanji_debug_end - kanji_debug_start);
+                    g_logger_ptr->log("[PARSE]   Trying kanji from pos " + std::to_string(try_start) + ": \"" + kanji_from_here + "\"");
+                }
+                
+                // Check if kanji from this position + text after forms a compound
+                // IMPORTANT: Use phoneme_root, not empty segmenter!
+                // When binary trie is loaded, segmenter exists but is empty
+                TrieNode* current = phoneme_root ? phoneme_root : (segmenter ? segmenter->get_root() : nullptr);
+                
+                if (!current) continue;
+                
+                bool valid_path = true;
+                
+                // Walk through kanji characters from try_start
+                for (size_t i = try_start; i < bracket_open && current != nullptr; i++) {
+                    auto it = current->children.find(chars[i]);
+                    if (it == current->children.end()) {
+                        valid_path = false;
+                        break;
+                    }
+                    current = it->second.get();
+                }
+                
+                // Continue walking through text after bracket to find compounds
+                size_t compound_length = 0;
+                if (valid_path && current != nullptr) {
+                    for (size_t i = after_bracket; i < chars.size() && current != nullptr; i++) {
+                        auto it = current->children.find(chars[i]);
+                        if (it == current->children.end()) {
+                            break;
+                        }
+                        current = it->second.get();
+                        
+                        // Check if this is a valid word ending
+                        if (current->phoneme.has_value()) {
+                            compound_length = i - after_bracket + 1;
+                            if (g_logger_ptr) {
+                                size_t debug_start = byte_positions[try_start];
+                                size_t debug_end = byte_positions[i + 1];
+                                std::string compound_text = text.substr(debug_start, debug_end - debug_start);
+                                g_logger_ptr->log("[PARSE]   Found compound from pos " + std::to_string(try_start) + 
+                                               ": \"" + compound_text + "\" (length=" + std::to_string(compound_length) + ")");
+                            }
+                        }
+                    }
+                }
+                
+                // Track the longest compound
+                if (compound_length > best_compound_length) {
+                    best_compound_length = compound_length;
+                    best_kanji_start = try_start;
+                }
+            }
+            
+            // If we found a better starting position, update word_start and add prefix
+            if (best_compound_length > 0) {
+                if (g_logger_ptr) {
+                    g_logger_ptr->log("[PARSE] Best compound found starting at pos " + std::to_string(best_kanji_start) + 
+                                   " with length " + std::to_string(best_compound_length));
+                }
+                
+                if (best_kanji_start > word_start) {
+                    size_t prefix_start_byte = byte_positions[word_start];
+                    size_t prefix_end_byte = byte_positions[best_kanji_start];
+                    std::string prefix_text = text.substr(prefix_start_byte, prefix_end_byte - prefix_start_byte);
+                    if (g_logger_ptr) {
+                        g_logger_ptr->log("[PARSE] Adding prefix text before compound: \"" + prefix_text + "\"");
+                    }
+                    segments.push_back(TextSegment(prefix_text, prefix_start_byte));
+                }
+                
+                word_start = best_kanji_start;
+                kanji_start_byte = byte_positions[word_start];
+                kanji = text.substr(kanji_start_byte, kanji_end_byte - kanji_start_byte);
+            }
+        }
+        
         // 🔥 SMART NAME DETECTION: Check if honorific follows the furigana hint
         // If we see さん、さま、様、君、ちゃん、くん etc. after the hint,
         // the reading applies to the ENTIRE name, so skip backtracking!
         // Example: 山本「やまもと」さん → Full reading applies to 山本
         // Example: 五百円「えん」です → No honorific, so backtrack
         bool is_likely_name = false;
-        size_t after_bracket = bracket_close + 1;
+        // after_bracket already declared above
         if (after_bracket < chars.size()) {
             uint32_t next_char = chars[after_bracket];
             // Check for common honorifics and name indicators
@@ -1980,25 +2079,46 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
                     std::string phoneme_value = current->phoneme.value();
                     
                     // 🔥 FIX: We must verify the phoneme MATCHES our reading!
-                    // Convert the reading (hiragana/katakana) to phonemes and compare
-                    // Walk the phoneme trie with our reading to get its phoneme value
-                    TrieNode* reading_node = phoneme_root;
-                    bool reading_found = true;
+                    // Reading is hiragana/katakana, so look up EACH CHARACTER individually
+                    // and concatenate their phonemes
                     
-                    for (size_t r = reading_start; r < reading_end && reading_node != nullptr; r++) {
-                        auto r_it = reading_node->children.find(chars[r]);
-                        if (r_it == reading_node->children.end()) {
-                            reading_found = false;
-                            break;
-                        }
-                        reading_node = r_it->second.get();
+                    // Pre-decode the reading string to code points
+                    std::vector<uint32_t> reading_chars;
+                    size_t reading_byte_pos = 0;
+                    while (reading_byte_pos < reading.length()) {
+                        reading_chars.push_back(get_code_point_lambda(reading, reading_byte_pos));
                     }
                     
-                    // Only split if the phoneme for the substring matches the reading's phoneme
+                    // Look up phoneme for each reading character and concatenate
+                    std::string reading_phoneme;
+                    bool all_chars_found = true;
+                    for (uint32_t reading_cp : reading_chars) {
+                        // Look up this single character in the phoneme trie
+                        TrieNode* char_node = phoneme_root;
+                        auto char_it = char_node->children.find(reading_cp);
+                        if (char_it == char_node->children.end()) {
+                            all_chars_found = false;
+                            break;
+                        }
+                        char_node = char_it->second.get();
+                        
+                        // Get phoneme for this character
+                        if (char_node->phoneme.has_value() && !char_node->phoneme.value().empty()) {
+                            reading_phoneme += char_node->phoneme.value();
+                        } else {
+                            all_chars_found = false;
+                            break;
+                        }
+                    }
+                    
+                    // Compare concatenated reading phonemes with kanji phoneme
                     bool phonemes_match = false;
-                    if (reading_found && reading_node != nullptr && reading_node->phoneme.has_value()) {
-                        std::string reading_phoneme = reading_node->phoneme.value();
+                    if (all_chars_found) {
                         phonemes_match = (phoneme_value == reading_phoneme);
+                        if (g_logger_ptr) {
+                            g_logger_ptr->log("[PARSE] Smart backtracking: Reading phoneme (char-by-char): \"" + reading_phoneme + 
+                                           "\", kanji: \"" + phoneme_value + "\", match: " + (phonemes_match ? "YES" : "NO"));
+                        }
                     }
                     
                     if (try_length < kanji_char_count && phonemes_match) {
@@ -2036,54 +2156,20 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
             }
         }
         
-        // 🔥 SMART COMPOUND WORD DETECTION USING TRIE'S LONGEST-MATCH
-        // Walk the trie starting from kanji to find the longest compound word
-        // after_bracket already declared above for name detection
+        // 🔥 USE COMPOUND DETECTION RESULT
+        // We already found the best compound in the earlier detection phase
         bool used_compound = false;
         
-        if (segmenter && after_bracket < chars.size()) {
-            // Use trie to find longest match starting from word_start position
-            // This naturally implements longest-match algorithm
-            size_t match_length = 0;
-            TrieNode* current = segmenter->get_root();
-            
-            // Walk trie through kanji characters first
-            for (size_t i = word_start; i < bracket_open && current != nullptr; i++) {
-                auto it = current->children.find(chars[i]);
-                if (it == current->children.end()) {
-                    break;
-                }
-                current = it->second.get();
+        if (best_compound_length > 0) {
+            size_t compound_end_byte = byte_positions[after_bracket + best_compound_length];
+            std::string compound = reading + text.substr(byte_positions[after_bracket], 
+                                                         compound_end_byte - byte_positions[after_bracket]);
+            if (g_logger_ptr) {
+                g_logger_ptr->log("[PARSE] Using compound: \"" + compound + "\"");
             }
-            
-            // Continue walking through characters after the bracket
-            if (current != nullptr) {
-                for (size_t i = after_bracket; i < chars.size() && current != nullptr; i++) {
-                    auto it = current->children.find(chars[i]);
-                    if (it == current->children.end()) {
-                        break;
-                    }
-                    current = it->second.get();
-                    
-                    // Check if this position marks a valid word ending
-                    if (current->phoneme.has_value()) {
-                        // Found a compound! Track it as the longest so far
-                        match_length = i - after_bracket + 1;
-                    }
-                }
-            }
-            
-            // If we found a compound word, use it with the furigana reading replacing the kanji
-            // This ensures that 来「き」た becomes "きた" not "来た" for phoneme conversion
-            if (match_length > 0) {
-                size_t compound_end_byte = byte_positions[after_bracket + match_length];
-                // 🔥 KEY FIX: Use the furigana READING instead of kanji!
-                std::string compound = reading + text.substr(byte_positions[after_bracket], 
-                                                             compound_end_byte - byte_positions[after_bracket]);
-                segments.push_back(TextSegment(compound, kanji_start_byte));
-                pos = after_bracket + match_length;
-                used_compound = true;
-            }
+            segments.push_back(TextSegment(compound, kanji_start_byte));
+            pos = after_bracket + best_compound_length;
+            used_compound = true;
         }
         
         if (!used_compound) {
