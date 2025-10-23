@@ -453,8 +453,16 @@ private:
         auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             now.time_since_epoch()) % 1000;
         
+        // Use thread-safe localtime function
+        std::tm time_info;
+#ifdef _WIN32
+        localtime_s(&time_info, &now_c);
+#else
+        localtime_r(&now_c, &time_info);
+#endif
+        
         std::stringstream ss;
-        ss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S");
+        ss << std::put_time(&time_info, "%Y-%m-%d %H:%M:%S");
         ss << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
         return ss.str();
     }
@@ -1872,7 +1880,7 @@ std::vector<TextSegment> parse_furigana_segments(const std::string& text, WordSe
         
         if (phoneme_root && !is_likely_name) {
             size_t kanji_char_count = bracket_open - word_start;
-            const size_t MAX_BACKTRACK = std::min(size_t(10), kanji_char_count);
+            const size_t MAX_BACKTRACK = (kanji_char_count < 10) ? kanji_char_count : 10;
             
             // Try matching from end backwards (starting with just last char, then last 2, etc.)
             for (size_t try_length = 1; try_length <= MAX_BACKTRACK; try_length++) {
@@ -2209,7 +2217,7 @@ int main(int argc, char* argv[]) {
     // Get UTF-8 arguments on Windows
     #ifdef _WIN32
         auto utf8_args = get_utf8_args();
-        int arg_count = utf8_args.size();
+        int arg_count = static_cast<int>(utf8_args.size());
     #else
         int arg_count = argc;
     #endif
