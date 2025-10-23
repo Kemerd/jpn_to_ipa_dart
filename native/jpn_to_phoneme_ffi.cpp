@@ -434,6 +434,10 @@ public:
     }
 };
 
+// Forward declaration for debug logger
+class FFIDebugLogger;
+extern FFIDebugLogger* g_logger_ptr;
+
 /**
  * High-performance trie node for phoneme lookup
  * Uses unordered_map for O(1) character code access
@@ -1846,8 +1850,8 @@ public:
     }
 };
 
-// Global logger instance pointer
-static FFIDebugLogger* g_logger_ptr = nullptr;
+// Global logger instance pointer (declared above, initialized here)
+FFIDebugLogger* g_logger_ptr = nullptr;
 
 /**
  * Helper functions for PhonemeConverter with word segmentation
