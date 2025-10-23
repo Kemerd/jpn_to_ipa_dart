@@ -16,6 +16,8 @@
 #include <thread>
 #include <cstring>
 #include <cstdlib>
+#include <fstream>
+#include <ctime>
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CONFIGURATION
@@ -591,6 +593,13 @@ public:
      */
     TrieNode* get_root() const {
         return root.get();
+    }
+    
+    /**
+     * Get number of entries loaded in the trie
+     */
+    size_t get_entry_count() const {
+        return entry_count;
     }
     
     /**
@@ -1728,9 +1737,21 @@ namespace SegmentedConversion {
         // 見「み」て → [TextSegment("見て")] (compound word detected)
         auto segments = parse_furigana_segments(japanese_text, &segmenter);
         
+        g_logger.log("[SEGMENT] Parsed " + std::to_string(segments.size()) + " segments from: " + japanese_text);
+        for (size_t i = 0; i < segments.size(); i++) {
+            if (segments[i].type == SegmentType::FURIGANA_HINT) {
+                g_logger.log("  [" + std::to_string(i) + "] FURIGANA: text=\"" + segments[i].text + 
+                           "\" reading=\"" + segments[i].reading + "\"");
+            } else {
+                g_logger.log("  [" + std::to_string(i) + "] NORMAL: \"" + segments[i].text + "\"");
+            }
+        }
+        
         // 🔥 STEP 2: Segment into words using structured segments with phoneme fallback
         // Furigana segments are treated as atomic units
         auto words = segmenter.segment_from_segments(segments, converter.get_root());
+        
+        g_logger.log_segment_info(words);
         
         // 🔥 STEP 3: Convert each word to phonemes with particle handling
         std::string result;
@@ -1740,8 +1761,11 @@ namespace SegmentedConversion {
             // Special handling for the topic particle は → "wa"
             if (words[i] == "は" || words[i] == "\xe3\x81\xaf") {  // は in UTF-8
                 result += "wa";
+                g_logger.log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"wa\" (particle)");
             } else {
-                result += converter.convert(words[i]);
+                std::string phoneme = converter.convert(words[i]);
+                result += phoneme;
+                g_logger.log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"" + phoneme + "\"");
             }
         }
         
@@ -2025,6 +2049,127 @@ int main(int argc, char* argv[]) {
  */
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DEBUG LOGGING
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Debug logger for FFI operations
+ * Writes to a file to trace issues without interfering with FFI communication
+ */
+class FFIDebugLogger {
+private:
+    std::ofstream log_file;
+    std::mutex log_mutex;
+    
+    std::string get_timestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto now_c = std::chrono::system_clock::to_time_t(now);
+        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+        
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S");
+        ss << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
+        return ss.str();
+    }
+    
+    void write_hex_dump(const uint8_t* data, size_t len, size_t max_len = 256) {
+        size_t dump_len = std::min(len, max_len);
+        for (size_t i = 0; i < dump_len; i += 16) {
+            log_file << "      ";
+            // Hex values
+            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
+                log_file << std::hex << std::setw(2) << std::setfill('0') 
+                         << static_cast<int>(data[i + j]) << " ";
+            }
+            log_file << " | ";
+            // ASCII representation
+            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
+                char c = data[i + j];
+                log_file << (c >= 32 && c < 127 ? c : '.');
+            }
+            log_file << std::endl;
+        }
+        if (len > max_len) {
+            log_file << "      ... (" << (len - max_len) << " more bytes)" << std::endl;
+        }
+    }
+    
+public:
+    FFIDebugLogger() {
+        log_file.open("jpn_phoneme_ffi_debug.log", std::ios::out | std::ios::app);
+        log("[DEBUG] ===== FFI Debug Logger Started =====");
+    }
+    
+    ~FFIDebugLogger() {
+        if (log_file.is_open()) {
+            log("[DEBUG] ===== FFI Debug Logger Stopped =====");
+            log_file.close();
+        }
+    }
+    
+    void log(const std::string& message) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "[" << get_timestamp() << "] " << message << std::endl;
+            log_file.flush();
+        }
+    }
+    
+    void log_init_from_memory(const uint8_t* data, size_t size) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "[" << get_timestamp() << "] [INIT] Loading binary data from memory" << std::endl;
+            log_file << "  Size: " << size << " bytes" << std::endl;
+            log_file << "  Data pointer: " << static_cast<const void*>(data) << std::endl;
+            if (data && size >= 14) {
+                log_file << "  Magic: " << std::string(reinterpret_cast<const char*>(data), 4) << std::endl;
+                log_file << "  First 256 bytes (hex):" << std::endl;
+                write_hex_dump(data, size);
+            }
+            log_file.flush();
+        }
+    }
+    
+    void log_convert(const char* input, const std::string& output, int64_t time_us) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "[" << get_timestamp() << "] [CONVERT]" << std::endl;
+            log_file << "  Input: \"" << (input ? input : "NULL") << "\"" << std::endl;
+            if (input) {
+                log_file << "  Input bytes (hex): ";
+                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(input);
+                size_t len = strlen(input);
+                for (size_t i = 0; i < len && i < 64; i++) {
+                    log_file << std::hex << std::setw(2) << std::setfill('0') 
+                             << static_cast<int>(bytes[i]) << " ";
+                }
+                if (len > 64) log_file << "...";
+                log_file << std::endl;
+            }
+            log_file << "  Output: \"" << output << "\"" << std::endl;
+            log_file << "  Output length: " << output.length() << " bytes" << std::endl;
+            log_file << "  Time: " << std::dec << time_us << " μs" << std::endl;
+            log_file.flush();
+        }
+    }
+    
+    void log_segment_info(const std::vector<std::string>& words) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        if (log_file.is_open()) {
+            log_file << "  Segmented words (" << words.size() << "):" << std::endl;
+            for (size_t i = 0; i < words.size(); i++) {
+                log_file << "    [" << i << "] \"" << words[i] << "\"" << std::endl;
+            }
+            log_file.flush();
+        }
+    }
+};
+
+// Global logger instance
+static FFIDebugLogger g_logger;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // GLOBAL STATE MANAGEMENT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2149,6 +2294,9 @@ FFI_EXPORT int jpn_phoneme_init(const char* json_file_path) {
 FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size) {
     std::lock_guard<std::mutex> lock(FFIState::init_mutex);
     
+    g_logger.log("[INIT_FROM_MEMORY] Called with data_size=" + std::to_string(data_size));
+    g_logger.log_init_from_memory(trie_data, static_cast<size_t>(data_size));
+    
     try {
         // Clear any previous error
         FFIState::last_error.clear();
@@ -2168,6 +2316,9 @@ FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_s
         FFIState::segmenter = std::make_unique<WordSegmenter>();
         // Note: We don't load ja_words.txt - the binary trie already contains words!
         // The segmenter will use FFIState::converter->get_root() as phoneme fallback
+        
+        g_logger.log("[INIT_FROM_MEMORY] Success! Loaded " + std::to_string(FFIState::converter->get_entry_count()) + " entries");
+        g_logger.log("[INIT_FROM_MEMORY] Word segmentation enabled: " + std::string(FFIState::use_segmentation ? "true" : "false"));
         
         return 1; // Success
         
@@ -2226,10 +2377,12 @@ FFI_EXPORT int jpn_phoneme_convert(
         // Perform conversion
         std::string result;
         if (FFIState::use_segmentation && FFIState::segmenter) {
+            g_logger.log("[CONVERT] Using segmented conversion for: " + std::string(japanese_text));
             result = SegmentedConversion::convert_with_segmentation(
                 *FFIState::converter, japanese_text, *FFIState::segmenter
             );
         } else {
+            g_logger.log("[CONVERT] Using direct conversion for: " + std::string(japanese_text));
             result = FFIState::converter->convert(japanese_text);
         }
         
@@ -2238,6 +2391,9 @@ FFI_EXPORT int jpn_phoneme_convert(
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
             end_time - start_time
         ).count();
+        
+        // Log the conversion result
+        g_logger.log_convert(japanese_text, result, elapsed);
         
         if (processing_time_us) {
             *processing_time_us = elapsed;
