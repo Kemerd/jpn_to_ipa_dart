@@ -1449,10 +1449,14 @@ public:
                             }
                             check_node = it->second.get();
                             
-                            // Check if we found a multi-character word (not just single particle)
+                            // 🔥 KEY CHECK: Only treat as a longer word if:
+                            //   - It's multi-character (i > pos)
+                            //   - Has a phoneme value (.has_value())
+                            //   - Phoneme is NON-EMPTY (!.empty())
+                            // This ensures "はまず" with empty phoneme → は is still a particle
                             if (i > pos && check_node->phoneme.has_value() && !check_node->phoneme.value().empty()) {
                                 has_longer_match = true;
-                                break;  // Found a longer word, stop checking
+                                break;  // Found a longer word with valid phonemes, stop checking
                             }
                         }
                     }
@@ -1484,7 +1488,8 @@ public:
                     current = it->second.get();
                     
                     // If this node marks end of word, it's a valid match
-                    if (current->phoneme.has_value()) {
+                    // 🔥 FIX: Skip empty phonemes (word markers from ja_words.txt)
+                    if (current->phoneme.has_value() && !current->phoneme.value().empty()) {
                         match_length = i - pos + 1;
                     }
                 }
@@ -1502,7 +1507,8 @@ public:
                         phoneme_current = it->second.get();
                         
                         // If this node has a phoneme, it's a valid word
-                        if (phoneme_current->phoneme.has_value()) {
+                        // 🔥 FIX: Skip empty phonemes (word markers from ja_words.txt)
+                        if (phoneme_current->phoneme.has_value() && !phoneme_current->phoneme.value().empty()) {
                             match_length = i - pos + 1;
                         }
                     }
