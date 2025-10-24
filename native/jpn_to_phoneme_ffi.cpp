@@ -548,12 +548,13 @@ public:
         }
     }
     
-    void log_segment_info(const std::vector<std::string>& words) {
+    void log_segment_info(const std::vector<WordSegmenter::SegmentedWord>& words) {
         std::lock_guard<std::mutex> lock(log_mutex);
         if (log_file.is_open()) {
             log_file << "  Segmented words (" << words.size() << "):" << std::endl;
             for (size_t i = 0; i < words.size(); i++) {
-                log_file << "    [" << i << "] \"" << words[i] << "\"" << std::endl;
+                log_file << "    [" << i << "] \"" << words[i].text << "\"" 
+                         << (words[i].is_furigana_reading ? " (furigana)" : "") << std::endl;
             }
             log_file.flush();
         }
@@ -1364,6 +1365,17 @@ public:
     }
     
     /**
+     * Result structure for segmentation that tracks furigana hints
+     */
+    struct SegmentedWord {
+        std::string text;
+        bool is_furigana_reading;  // True if this came from a furigana hint and shouldn't be re-converted
+        
+        SegmentedWord(const std::string& t, bool is_furi = false) 
+            : text(t), is_furigana_reading(is_furi) {}
+    };
+    
+    /**
      * Segment text into words using longest-match algorithm with TextSegment support
      * SMART SEGMENTATION: Words are matched from dictionary, and any
      * unmatched sequences between words are treated as grammatical elements
@@ -1378,15 +1390,17 @@ public:
      * treating each segment as an atomic unit during segmentation.
      * 
      * @param phoneme_root Optional phoneme trie root for fallback lookups
+     * @return Vector of segmented words with furigana tracking
      */
-    std::vector<std::string> segment_from_segments(const std::vector<TextSegment>& segments, TrieNode* phoneme_root = nullptr) {
-        std::vector<std::string> words;
+    std::vector<SegmentedWord> segment_from_segments(const std::vector<TextSegment>& segments, TrieNode* phoneme_root = nullptr) {
+        std::vector<SegmentedWord> words;
         
         // Process each segment
         for (const auto& segment : segments) {
             // For furigana segments, treat the entire reading as one word
+            // 🔥 CRITICAL: Mark it as a furigana reading so it won't be re-converted!
             if (segment.type == SegmentType::FURIGANA_HINT) {
-                words.push_back(segment.reading);
+                words.push_back(SegmentedWord(segment.reading, true));
                 continue;
             }
             
@@ -1469,7 +1483,7 @@ public:
                 if (treat_as_particle) {
                     size_t start_byte = byte_positions[pos];
                     size_t end_byte = byte_positions[pos + 1];
-                    words.push_back(text.substr(start_byte, end_byte - start_byte));
+                    words.push_back(SegmentedWord(text.substr(start_byte, end_byte - start_byte)));
                     pos++;
                     continue;  // Skip the rest of the matching logic
                 }
@@ -1518,7 +1532,7 @@ public:
                     // Found a word match - extract it
                     size_t start_byte = byte_positions[pos];
                     size_t end_byte = byte_positions[pos + match_length];
-                    words.push_back(text.substr(start_byte, end_byte - start_byte));
+                    words.push_back(SegmentedWord(text.substr(start_byte, end_byte - start_byte)));
                     pos += match_length;
                 } else {
                     // No match found - collect all consecutive unmatched characters as grammar token
@@ -1563,7 +1577,7 @@ public:
                     if (grammar_length > 0) {
                         size_t start_byte = byte_positions[grammar_start];
                         size_t end_byte = byte_positions[grammar_start + grammar_length];
-                        words.push_back(text.substr(start_byte, end_byte - start_byte));
+                        words.push_back(SegmentedWord(text.substr(start_byte, end_byte - start_byte)));
                     }
                 }
             }
@@ -2279,16 +2293,28 @@ namespace SegmentedConversion {
             if (i > 0) result += " ";  // Add space between words
             
             // Special handling for the topic particle は → "wa"
-            if (words[i] == "は" || words[i] == "\xe3\x81\xaf") {  // は in UTF-8
+            if (words[i].text == "は" || words[i].text == "\xe3\x81\xaf") {  // は in UTF-8
                 result += "wa";
                 if (g_logger_ptr) {
-                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"wa\" (particle)");
+                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"wa\" (particle)");
                 }
-            } else {
-                std::string phoneme = converter.convert(words[i]);
+            }
+            // 🔥 CRITICAL FIX: If this word came from a furigana hint, it's already a reading!
+            // Convert it directly without re-conversion through the phoneme dictionary
+            else if (words[i].is_furigana_reading) {
+                // Convert the reading (hiragana/katakana) to phonemes
+                std::string phoneme = converter.convert(words[i].text);
                 result += phoneme;
                 if (g_logger_ptr) {
-                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i] + "\" → \"" + phoneme + "\"");
+                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"" + phoneme + "\" (from furigana)");
+                }
+            }
+            else {
+                // Normal word - convert through phoneme dictionary
+                std::string phoneme = converter.convert(words[i].text);
+                result += phoneme;
+                if (g_logger_ptr) {
+                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"" + phoneme + "\"");
                 }
             }
         }
@@ -2316,16 +2342,34 @@ namespace SegmentedConversion {
             if (i > 0) result.phonemes += " ";  // Add space between words
             
             // Special handling for the topic particle は → "wa"
-            if (words[i] == "は" || words[i] == "\xe3\x81\xaf") {  // は in UTF-8
+            if (words[i].text == "は" || words[i].text == "\xe3\x81\xaf") {  // は in UTF-8
                 result.phonemes += "wa";
                 // Add to matches for consistency
                 Match match;
-                match.original = words[i];
+                match.original = words[i].text;
                 match.phoneme = "wa";
                 match.start_index = byte_offset;
                 result.matches.push_back(match);
-            } else {
-                auto word_result = converter.convert_detailed(words[i]);
+            }
+            // 🔥 CRITICAL FIX: If this word came from a furigana hint, it's already a reading!
+            else if (words[i].is_furigana_reading) {
+                // Convert the reading (hiragana/katakana) to phonemes
+                auto word_result = converter.convert_detailed(words[i].text);
+                
+                // Adjust match positions
+                for (auto& match : word_result.matches) {
+                    match.start_index += byte_offset;
+                    result.matches.push_back(match);
+                }
+                
+                result.phonemes += word_result.phonemes;
+                result.unmatched.insert(result.unmatched.end(), 
+                                       word_result.unmatched.begin(), 
+                                       word_result.unmatched.end());
+            }
+            else {
+                // Normal word - convert through phoneme dictionary
+                auto word_result = converter.convert_detailed(words[i].text);
                 
                 // Adjust match positions to account for original text position
                 for (auto& match : word_result.matches) {
@@ -2339,7 +2383,7 @@ namespace SegmentedConversion {
                                        word_result.unmatched.end());
             }
             
-            byte_offset += words[i].length();
+            byte_offset += words[i].text.length();
         }
         
         return result;
