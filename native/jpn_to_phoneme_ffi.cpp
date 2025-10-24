@@ -555,20 +555,8 @@ public:
         }
     }
     
-    // Forward declaration of SegmentedWord struct (defined in WordSegmenter)
-    struct SegmentedWord;
-    
-    void log_segment_info(const std::vector<SegmentedWord>& words) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "  Segmented words (" << words.size() << "):" << std::endl;
-            for (size_t i = 0; i < words.size(); i++) {
-                log_file << "    [" << i << "] \"" << words[i].text << "\"" 
-                         << (words[i].is_furigana_reading ? " (furigana)" : "") << std::endl;
-            }
-            log_file.flush();
-        }
-    }
+    // Note: log_segment_info is defined later after WordSegmenter is fully defined
+    // See below after WordSegmenter class definition
 };
 
 // Global logger instance pointer
