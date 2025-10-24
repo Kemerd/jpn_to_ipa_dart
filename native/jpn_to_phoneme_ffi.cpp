@@ -2340,8 +2340,12 @@ namespace SegmentedConversion {
         // Furigana segments are treated as atomic units
         auto words = segmenter.segment_from_segments(segments, converter.get_root());
         
+        // Debug logging removed (log_segment_info requires WordSegmenter::SegmentedWord definition)
+        // If needed for debugging, manually log word count here
         if (g_logger_ptr) {
-            g_logger_ptr->log_segment_info(words);
+            std::ostringstream log_msg;
+            log_msg << "[SEGMENT] Segmented into " << words.size() << " words";
+            g_logger_ptr->log(log_msg.str());
         }
         
         // 🔥 STEP 3: Convert each word to phonemes with particle handling
