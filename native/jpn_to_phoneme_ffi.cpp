@@ -2714,12 +2714,16 @@ namespace FFIState {
 /**
  * @brief Export macro for C-compatible functions
  * 
- * Ensures proper visibility and C linkage for FFI exports
+ * Ensures proper visibility and C linkage for FFI exports.
+ * 
+ * For iOS/macOS/Linux: The __attribute__((used)) is critical to prevent
+ * the linker from discarding symbols during link-time optimization (LTO).
+ * Without it, FFI symbol lookup via DynamicLibrary.process() will fail.
  */
 #ifdef _WIN32
     #define FFI_EXPORT extern "C" __declspec(dllexport)
 #else
-    #define FFI_EXPORT extern "C" __attribute__((visibility("default")))
+    #define FFI_EXPORT extern "C" __attribute__((visibility("default"))) __attribute__((used))
 #endif
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
