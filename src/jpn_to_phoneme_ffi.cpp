@@ -782,7 +782,7 @@ public:
      */
     bool try_load_binary_format_mem(const uint8_t* data, size_t data_size) {
         if (!data || data_size < 14) {
-            std::cerr << "❌ Invalid data pointer or size too small" << std::endl;
+            // Invalid data pointer or size too small (error suppressed for FFI)
             return false;
         }
         
@@ -791,7 +791,7 @@ public:
         
         // Read magic number
         if (memcmp(data + pos, "JPHO", 4) != 0) {
-            std::cerr << "❌ Invalid binary format: bad magic number" << std::endl;
+            // Invalid binary format: bad magic number (error suppressed for FFI)
             return false;
         }
         pos += 4;
@@ -803,8 +803,7 @@ public:
         pos += 2;
         
         if (version_major != 1 || version_minor != 0) {
-            std::cerr << "❌ Unsupported binary format version: " << version_major 
-                      << "." << version_minor << std::endl;
+            // Unsupported binary format version (error suppressed for FFI)
             return false;
         }
         
@@ -835,7 +834,7 @@ public:
             // Read key
             uint32_t key_len = read_varint_from_mem();
             if (pos + key_len > data_size) {
-                std::cerr << "❌ Data overflow reading key at entry " << i << std::endl;
+                // Data overflow reading key (error suppressed for FFI)
                 return false;
             }
             std::string key(reinterpret_cast<const char*>(data + pos), key_len);
@@ -844,7 +843,7 @@ public:
             // Read value
             uint32_t value_len = read_varint_from_mem();
             if (pos + value_len > data_size) {
-                std::cerr << "❌ Data overflow reading value at entry " << i << std::endl;
+                // Data overflow reading value (error suppressed for FFI)
                 return false;
             }
             std::string value(reinterpret_cast<const char*>(data + pos), value_len);
@@ -2385,6 +2384,14 @@ std::vector<std::string> get_utf8_args() {
 }
 #endif
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STANDALONE MAIN FUNCTION (not used in FFI builds)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#ifndef DART_SHARED_LIB
+
+// Standalone main() requires iostream
+#include <iostream>
+
 int main(int argc, char* argv[]) {
     // Enable UTF-8 support for Windows console
     #ifdef _WIN32
@@ -2574,6 +2581,8 @@ int main(int argc, char* argv[]) {
     
     return 0;
 }
+
+#endif // DART_SHARED_LIB (end of standalone main function)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DART FFI EXPORTS
