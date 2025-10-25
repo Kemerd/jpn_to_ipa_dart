@@ -28,7 +28,14 @@ A new Flutter FFI plugin project.
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'CLANG_CXX_LIBRARY' => 'libc++'
+    'CLANG_CXX_LIBRARY' => 'libc++',
+    # Prevent symbol stripping on iOS - CRITICAL for FFI
+    'STRIP_STYLE' => 'non-global',
+    'DEAD_CODE_STRIPPING' => 'NO',
+    # Ensure all symbols are visible
+    'GCC_SYMBOLS_PRIVATE_EXTERN' => 'NO',
+    # Force symbols to be included
+    'OTHER_LDFLAGS' => '-all_load'
   }
   s.swift_version = '5.0'
 end

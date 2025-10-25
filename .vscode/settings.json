@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "L:/Dev/jpn_to_ipa_dart/linux"
+    "cmake.sourceDirectory": "L:/Dev/jpn_to_ipa_dart/linux",
+    "files.associations": {
+        "xstring": "cpp"
+    }
 }

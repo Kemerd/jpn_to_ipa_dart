@@ -14,6 +14,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FFI EXPORT MACRO FOR SYMBOL VISIBILITY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#ifdef _WIN32
+    #define FFI_EXPORT __declspec(dllexport)
+#else
+    #define FFI_EXPORT __attribute__((visibility("default"))) __attribute__((used))
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,7 +37,7 @@ extern "C" {
  * @param json_file_path Path to the ja_phonemes.json file (UTF-8 encoded)
  * @return 1 on success, 0 on failure
  */
-int jpn_phoneme_init(const char* json_file_path);
+FFI_EXPORT int jpn_phoneme_init(const char* json_file_path);
 
 /**
  * @brief Initialize the phoneme converter from memory-mapped .trie data
@@ -37,7 +46,7 @@ int jpn_phoneme_init(const char* json_file_path);
  * @param data_size Size of the trie data in bytes
  * @return 1 on success, 0 on failure
  */
-int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size);
+FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CONVERSION FUNCTIONS
@@ -52,7 +61,7 @@ int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size);
  * @param processing_time_us Pointer to store processing time in microseconds (can be NULL)
  * @return Number of bytes written to output_buffer, or -1 on error
  */
-int jpn_phoneme_convert(
+FFI_EXPORT int jpn_phoneme_convert(
     const char* japanese_text,
     uint8_t* output_buffer,
     int buffer_size,
@@ -68,7 +77,7 @@ int jpn_phoneme_convert(
  * 
  * @return Error message string (never NULL, empty string if no error)
  */
-const char* jpn_phoneme_get_error(void);
+FFI_EXPORT const char* jpn_phoneme_get_error(void);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // INFORMATION FUNCTIONS
@@ -79,14 +88,14 @@ const char* jpn_phoneme_get_error(void);
  * 
  * @return Number of entries, or -1 if not initialized
  */
-int jpn_phoneme_get_entry_count(void);
+FFI_EXPORT int jpn_phoneme_get_entry_count(void);
 
 /**
  * @brief Get the library version string
  * 
  * @return Version string (e.g., "2.0.0")
  */
-const char* jpn_phoneme_version(void);
+FFI_EXPORT const char* jpn_phoneme_version(void);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // WORD SEGMENTATION FUNCTIONS
@@ -98,28 +107,28 @@ const char* jpn_phoneme_version(void);
  * @param word_file_path Path to the word list file (e.g., "ja_words.txt")
  * @return 1 on success, 0 on failure
  */
-int jpn_phoneme_init_word_dict(const char* word_file_path);
+FFI_EXPORT int jpn_phoneme_init_word_dict(const char* word_file_path);
 
 /**
  * @brief Enable or disable word segmentation
  * 
  * @param enabled true to enable segmentation, false to disable
  */
-void jpn_phoneme_set_use_segmentation(bool enabled);
+FFI_EXPORT void jpn_phoneme_set_use_segmentation(bool enabled);
 
 /**
  * @brief Check if word segmentation is enabled
  * 
  * @return true if segmentation is enabled, false otherwise
  */
-bool jpn_phoneme_get_use_segmentation(void);
+FFI_EXPORT bool jpn_phoneme_get_use_segmentation(void);
 
 /**
  * @brief Get the number of words in the word dictionary
  * 
  * @return Number of words loaded, or -1 if no dictionary loaded
  */
-int jpn_phoneme_get_word_count(void);
+FFI_EXPORT int jpn_phoneme_get_word_count(void);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CLEANUP FUNCTIONS
@@ -128,7 +137,7 @@ int jpn_phoneme_get_word_count(void);
 /**
  * @brief Clean up all resources used by the converter
  */
-void jpn_phoneme_cleanup(void);
+FFI_EXPORT void jpn_phoneme_cleanup(void);
 
 #ifdef __cplusplus
 }
