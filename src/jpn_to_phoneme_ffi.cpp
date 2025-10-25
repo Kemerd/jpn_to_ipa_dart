@@ -2269,21 +2269,23 @@ namespace SegmentedConversion {
         for (size_t i = 0; i < words.size(); i++) {
             if (i > 0) result += " ";  // Add space between words
             
-            // Special handling for the topic particle は → "wa"
-            if (words[i].text == "は" || words[i].text == "\xe3\x81\xaf") {  // は in UTF-8
-                result += "wa";
-                if (g_logger_ptr) {
-                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"wa\" (particle)");
-                }
-            }
             // 🔥 CRITICAL FIX: If this word came from a furigana hint, it's already a reading!
+            // は within furigana should be "ha", NOT "wa" (particles don't appear in furigana)
             // Convert it directly without re-conversion through the phoneme dictionary
-            else if (words[i].is_furigana_reading) {
+            if (words[i].is_furigana_reading) {
                 // Convert the reading (hiragana/katakana) to phonemes
                 std::string phoneme = converter.convert(words[i].text);
                 result += phoneme;
                 if (g_logger_ptr) {
                     g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"" + phoneme + "\" (from furigana)");
+                }
+            }
+            // Special handling for the topic particle は → "wa"
+            // Only apply this if NOT from furigana (furigana は is always "ha")
+            else if (words[i].text == "は" || words[i].text == "\xe3\x81\xaf") {  // は in UTF-8
+                result += "wa";
+                if (g_logger_ptr) {
+                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"wa\" (particle)");
                 }
             }
             else {
@@ -2318,18 +2320,9 @@ namespace SegmentedConversion {
         for (size_t i = 0; i < words.size(); i++) {
             if (i > 0) result.phonemes += " ";  // Add space between words
             
-            // Special handling for the topic particle は → "wa"
-            if (words[i].text == "は" || words[i].text == "\xe3\x81\xaf") {  // は in UTF-8
-                result.phonemes += "wa";
-                // Add to matches for consistency
-                Match match;
-                match.original = words[i].text;
-                match.phoneme = "wa";
-                match.start_index = byte_offset;
-                result.matches.push_back(match);
-            }
             // 🔥 CRITICAL FIX: If this word came from a furigana hint, it's already a reading!
-            else if (words[i].is_furigana_reading) {
+            // は within furigana should be "ha", NOT "wa" (particles don't appear in furigana)
+            if (words[i].is_furigana_reading) {
                 // Convert the reading (hiragana/katakana) to phonemes
                 auto word_result = converter.convert_detailed(words[i].text);
                 
@@ -2343,6 +2336,17 @@ namespace SegmentedConversion {
                 result.unmatched.insert(result.unmatched.end(), 
                                        word_result.unmatched.begin(), 
                                        word_result.unmatched.end());
+            }
+            // Special handling for the topic particle は → "wa"
+            // Only apply this if NOT from furigana (furigana は is always "ha")
+            else if (words[i].text == "は" || words[i].text == "\xe3\x81\xaf") {  // は in UTF-8
+                result.phonemes += "wa";
+                // Add to matches for consistency
+                Match match;
+                match.original = words[i].text;
+                match.phoneme = "wa";
+                match.start_index = byte_offset;
+                result.matches.push_back(match);
             }
             else {
                 // Normal word - convert through phoneme dictionary
