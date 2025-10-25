@@ -38,4 +38,7 @@ A new Flutter FFI plugin project.
     'OTHER_LDFLAGS' => '-all_load'
   }
   s.swift_version = '5.0'
+  
+  # Explicitly link C++ standard library
+  s.library = 'c++'
 end
