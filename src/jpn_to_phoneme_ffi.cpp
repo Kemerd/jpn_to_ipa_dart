@@ -4,7 +4,6 @@
 // Usage: ./jpn_to_phoneme "日本語テキスト"
 
 // Note: iostream removed for iOS compatibility (only needed for console output)
-// File logging disabled for iOS compatibility
 // #include <iostream>
 #include <fstream>
 #include <string>
@@ -704,7 +703,6 @@ public:
         char magic[4];
         file.read(magic, 4);
         if (memcmp(magic, "JPHO", 4) != 0) {
-            std::cerr << "❌ Invalid binary format: bad magic number" << std::endl;
             return false;
         }
         
@@ -714,8 +712,6 @@ public:
         file.read(reinterpret_cast<char*>(&version_minor), 2);
         
         if (version_major != 1 || version_minor != 0) {
-            std::cerr << "❌ Unsupported binary format version: " << version_major 
-                      << "." << version_minor << std::endl;
             return false;
         }
         
