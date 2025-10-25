@@ -16,16 +16,24 @@ High-performance Japanese text to IPA phoneme conversion using optimized C++ imp
   s.source           = { :path => '.' }
   
   # Include plugin files and C++ FFI source
-  # iOS requires .mm extension for C++ files, but we include .cpp and force it to compile as C++
-  s.source_files = 'Classes/**/*.{h,m,mm}', '../native/*.{cpp,hpp}'
+  # Explicitly list all source files to ensure they're compiled
+  s.source_files = [
+    'Classes/JapanesePhonemeConverterPlugin.h',
+    'Classes/JapanesePhonemeConverterPlugin.mm',
+    '../native/jpn_to_phoneme_ffi.cpp'
+  ]
   s.public_header_files = 'Classes/**/*.h'
   s.preserve_paths = ['Classes/**/*', '../native/**/*']
+  
+  # CRITICAL: Mark this as a static framework to ensure symbols are included
+  s.static_framework = true
   
   # Add the assets directory to resources
   s.resources = ['../assets/*']
   
   # Platform configuration
   s.ios.deployment_target = '11.0'
+  s.platform = :ios, '11.0'
   
   # C++ settings - apply optimization flags only in Release builds
   # This prevents conflicts with Debug runtime checks
