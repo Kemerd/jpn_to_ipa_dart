@@ -3,7 +3,9 @@
 // Compile: g++ -std=c++17 -O3 -o jpn_to_phoneme jpn_to_phoneme.cpp
 // Usage: ./jpn_to_phoneme "日本語テキスト"
 
-#include <iostream>
+// Note: iostream removed for iOS compatibility (only needed for console output)
+// File logging disabled for iOS compatibility
+// #include <iostream>
 #include <fstream>
 #include <string>
 #include <unordered_map>
@@ -16,7 +18,6 @@
 #include <thread>
 #include <cstring>
 #include <cstdlib>
-#include <fstream>
 #include <ctime>
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -446,117 +447,34 @@ class WordSegmenter;
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * Debug logger for FFI operations
- * Writes to a file to trace issues without interfering with FFI communication
+ * Debug logger for FFI operations (DISABLED FOR iOS COMPATIBILITY)
+ * File logging has been disabled to avoid iostream/ofstream issues on iOS
+ * All logging calls are now no-ops
  */
 class FFIDebugLogger {
-private:
-    std::ofstream log_file;
-    std::mutex log_mutex;
-    
-    std::string get_timestamp() {
-        auto now = std::chrono::system_clock::now();
-        auto now_c = std::chrono::system_clock::to_time_t(now);
-        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()) % 1000;
-        
-        // Use thread-safe localtime function
-        std::tm time_info;
-#ifdef _WIN32
-        localtime_s(&time_info, &now_c);
-#else
-        localtime_r(&now_c, &time_info);
-#endif
-        
-        std::stringstream ss;
-        ss << std::put_time(&time_info, "%Y-%m-%d %H:%M:%S");
-        ss << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
-        return ss.str();
-    }
-    
-    void write_hex_dump(const uint8_t* data, size_t len, size_t max_len = 256) {
-        size_t dump_len = (len < max_len) ? len : max_len;
-        for (size_t i = 0; i < dump_len; i += 16) {
-            log_file << "      ";
-            // Hex values
-            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
-                log_file << std::hex << std::setw(2) << std::setfill('0') 
-                         << static_cast<int>(data[i + j]) << " ";
-            }
-            log_file << " | ";
-            // ASCII representation
-            for (size_t j = 0; j < 16 && i + j < dump_len; j++) {
-                char c = data[i + j];
-                log_file << (c >= 32 && c < 127 ? c : '.');
-            }
-            log_file << std::endl;
-        }
-        if (len > max_len) {
-            log_file << "      ... (" << (len - max_len) << " more bytes)" << std::endl;
-        }
-    }
-    
 public:
+    // Stub constructor - no file logging
     FFIDebugLogger() {
-        log_file.open("jpn_phoneme_ffi_debug.log", std::ios::out | std::ios::app);
-        log("[DEBUG] ===== FFI Debug Logger Started =====");
+        // File logging disabled for iOS compatibility
     }
     
+    // Stub destructor
     ~FFIDebugLogger() {
-        if (log_file.is_open()) {
-            log("[DEBUG] ===== FFI Debug Logger Stopped =====");
-            log_file.close();
-        }
+        // File logging disabled for iOS compatibility
     }
     
+    // Stub logging methods - all are no-ops
     void log(const std::string& message) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "[" << get_timestamp() << "] " << message << std::endl;
-            log_file.flush();
-        }
+        // No-op: file logging disabled for iOS compatibility
     }
     
     void log_init_from_memory(const uint8_t* data, size_t size) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "[" << get_timestamp() << "] [INIT] Loading binary data from memory" << std::endl;
-            log_file << "  Size: " << size << " bytes" << std::endl;
-            log_file << "  Data pointer: " << static_cast<const void*>(data) << std::endl;
-            if (data && size >= 14) {
-                log_file << "  Magic: " << std::string(reinterpret_cast<const char*>(data), 4) << std::endl;
-                log_file << "  First 256 bytes (hex):" << std::endl;
-                write_hex_dump(data, size);
-            }
-            log_file.flush();
-        }
+        // No-op: file logging disabled for iOS compatibility
     }
     
     void log_convert(const char* input, const std::string& output, int64_t time_us) {
-        std::lock_guard<std::mutex> lock(log_mutex);
-        if (log_file.is_open()) {
-            log_file << "[" << get_timestamp() << "] [CONVERT]" << std::endl;
-            log_file << "  Input: \"" << (input ? input : "NULL") << "\"" << std::endl;
-            if (input) {
-                log_file << "  Input bytes (hex): ";
-                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(input);
-                size_t len = strlen(input);
-                for (size_t i = 0; i < len && i < 64; i++) {
-                    log_file << std::hex << std::setw(2) << std::setfill('0') 
-                             << static_cast<int>(bytes[i]) << " ";
-                }
-                if (len > 64) log_file << "...";
-                log_file << std::endl;
-            }
-            log_file << "  Output: \"" << output << "\"" << std::endl;
-            log_file << "  Output length: " << output.length() << " bytes" << std::endl;
-            log_file << "  Time: " << std::dec << time_us << " μs" << std::endl;
-            log_file.flush();
-        }
+        // No-op: file logging disabled for iOS compatibility
     }
-    
-    // Note: log_segment_info is defined later after WordSegmenter is fully defined
-    // See below after WordSegmenter class definition
 };
 
 // Global logger instance pointer
@@ -2806,15 +2724,16 @@ FFI_EXPORT int jpn_phoneme_init(const char* json_file_path) {
 FFI_EXPORT int jpn_phoneme_init_from_memory(const uint8_t* trie_data, int data_size) {
     std::lock_guard<std::mutex> lock(FFIState::init_mutex);
     
+    // File logging disabled for iOS compatibility
     // Initialize logger on first call
-    if (!g_logger_ptr) {
-        g_logger_ptr = new FFIDebugLogger();
-    }
+    // if (!g_logger_ptr) {
+    //     g_logger_ptr = new FFIDebugLogger();
+    // }
     
-    if (g_logger_ptr) {
-        g_logger_ptr->log("[INIT_FROM_MEMORY] Called with data_size=" + std::to_string(data_size));
-        g_logger_ptr->log_init_from_memory(trie_data, static_cast<size_t>(data_size));
-    }
+    // if (g_logger_ptr) {
+    //     g_logger_ptr->log("[INIT_FROM_MEMORY] Called with data_size=" + std::to_string(data_size));
+    //     g_logger_ptr->log_init_from_memory(trie_data, static_cast<size_t>(data_size));
+    // }
     
     try {
         // Clear any previous error
