@@ -1,0 +1,19 @@
+# Run with `dart run ffigen --config ffigen.yaml`.
+name: JapanesePhonemeConverterBindings
+description: |
+  Bindings for `src/jpn_to_phoneme_ffi.h`.
+
+  Regenerate bindings with `dart run ffigen --config ffigen.yaml`.
+output: 'lib/japanese_phoneme_converter_bindings_generated.dart'
+headers:
+  entry-points:
+    - 'src/jpn_to_phoneme_ffi.h'
+  include-directives:
+    - 'src/jpn_to_phoneme_ffi.h'
+preamble: |
+  // ignore_for_file: always_specify_types
+  // ignore_for_file: camel_case_types
+  // ignore_for_file: non_constant_identifier_names
+comments:
+  style: any
+  length: full

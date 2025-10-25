@@ -1,4 +1,3 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.kemerd.japanese_phoneme_converter">
+  package="com.example.japanese_phoneme_converter">
 </manifest>
-
