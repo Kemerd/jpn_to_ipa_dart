@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'japanese_phoneme_converter'
-  s.version          = '1.0.0'
+  s.version          = '1.1.0'
   s.summary          = 'Blazing fast Japanese to IPA phoneme converter using native FFI'
   s.description      = <<-DESC
 High-performance Japanese text to IPA phoneme conversion using optimized C++ implementation.
