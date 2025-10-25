@@ -10,15 +10,16 @@ High-performance Japanese text to IPA phoneme conversion using optimized C++ imp
                        DESC
   s.homepage         = 'https://github.com/Kemerd/japanese-phoneme-converter'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Kemerd' => 'your.email@example.com' }
+  s.author           = { 'Kemerd' => 'support@novabox.digital' }
   
   # Source location
   s.source           = { :path => '.' }
   
   # Include plugin files and C++ FFI source
-  s.source_files = 'Classes/**/*.{h,m,mm}', '../native/jpn_to_phoneme_ffi.cpp'
+  # iOS requires .mm extension for C++ files, but we include .cpp and force it to compile as C++
+  s.source_files = 'Classes/**/*.{h,m,mm}', '../native/*.{cpp,hpp}'
   s.public_header_files = 'Classes/**/*.h'
-  s.preserve_paths = ['Classes/**/*', '../native/jpn_to_phoneme_ffi.cpp']
+  s.preserve_paths = ['Classes/**/*', '../native/**/*']
   
   # Add the assets directory to resources
   s.resources = ['../assets/*']
@@ -47,16 +48,29 @@ High-performance Japanese text to IPA phoneme conversion using optimized C++ imp
   # Flutter dependency
   s.dependency 'Flutter'
   
-  # Platform setup
+  # Platform setup - Pod target configuration
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     'VALID_ARCHS' => 'x86_64 arm64',
-    'OTHER_LDFLAGS' => '-ObjC -all_load'
+    'OTHER_LDFLAGS' => '-ObjC -all_load',
+    # Ensure .cpp files are treated as C++ sources
+    'GCC_INPUT_FILETYPE' => 'automatic',
+    # Force all symbols to be visible (helps with FFI symbol lookup)
+    'DEAD_CODE_STRIPPING' => 'NO',
+    'STRIP_STYLE' => 'non-global'
   }
+  
+  # User target configuration - ensures the app itself links the symbols properly
+  s.user_target_xcconfig = {
+    'OTHER_LDFLAGS' => '-ObjC',
+    # Don't strip symbols that the FFI needs to find
+    'DEAD_CODE_STRIPPING' => 'NO'
+  }
+  
   s.swift_version = '5.0'
   
-  # Ensure FFI symbols are exported
+  # Ensure FFI symbols are exported and C++ standard library is linked
   s.libraries = 'c++'
 end
 

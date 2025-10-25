@@ -23,9 +23,9 @@ extern "C" {
   // The forward declarations above ensure the C++ symbols are linked
   // into the iOS app binary so they're available via DynamicLibrary.process()
   
-  // Force linking by referencing a symbol (prevents dead code stripping)
+  // Force linking by calling the helper method (prevents dead code stripping)
   // This ensures the linker includes all FFI symbols in the final binary
-  (void)jpn_phoneme_version;
+  [JapanesePhonemeConverterPlugin ensureFFISymbolsLinked];
 }
 
 // Add dummy method that references all FFI functions to prevent dead code stripping
