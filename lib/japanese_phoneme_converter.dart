@@ -8,6 +8,10 @@ import 'conversion_result.dart';
 import 'phoneme_exception.dart';
 import 'japanese_phoneme_converter_bindings_generated.dart';
 
+// Export public API
+export 'conversion_result.dart';
+export 'phoneme_exception.dart';
+
 // ============================================================================
 // Japanese Phoneme Converter - Main Class
 // ============================================================================
