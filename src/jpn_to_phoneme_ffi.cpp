@@ -3,6 +3,9 @@
 // Compile: g++ -std=c++17 -O3 -o jpn_to_phoneme jpn_to_phoneme.cpp
 // Usage: ./jpn_to_phoneme "日本語テキスト"
 
+// FFI header - must be included to ensure proper symbol exports
+#include "jpn_to_phoneme_ffi.h"
+
 // Note: iostream removed for iOS compatibility (only needed for console output)
 // #include <iostream>
 #include <fstream>
