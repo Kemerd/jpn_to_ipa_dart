@@ -2638,23 +2638,18 @@ namespace FFIState {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// FFI EXPORT MACROS
+// FFI EXPORT MACRO - Defined in jpn_to_phoneme_ffi.h
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * @brief Export macro for C-compatible functions
+ * FFI_EXPORT is defined in the header file to ensure consistency between
+ * declarations and definitions. It provides extern "C" linkage (no name mangling)
+ * and proper symbol visibility across all platforms.
  * 
- * Ensures proper visibility and C linkage for FFI exports.
- * 
- * For iOS/macOS/Linux: The __attribute__((used)) is critical to prevent
- * the linker from discarding symbols during link-time optimization (LTO).
- * Without it, FFI symbol lookup via DynamicLibrary.process() will fail.
+ * The "used" attribute on non-Windows platforms prevents the linker from
+ * discarding symbols during link-time optimization (LTO), which is critical
+ * for FFI symbol lookup via DynamicLibrary.process().
  */
-#ifdef _WIN32
-    #define FFI_EXPORT extern "C" __declspec(dllexport)
-#else
-    #define FFI_EXPORT extern "C" __attribute__((visibility("default"))) __attribute__((used))
-#endif
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // INITIALIZATION FUNCTIONS

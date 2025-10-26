@@ -17,14 +17,20 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FFI EXPORT MACRO FOR SYMBOL VISIBILITY
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#ifdef _WIN32
-    #define FFI_EXPORT __declspec(dllexport)
-#else
-    #define FFI_EXPORT __attribute__((visibility("default"))) __attribute__((used))
-#endif
-
 #ifdef __cplusplus
-extern "C" {
+    // C++ build: Include extern "C" in the macro to prevent name mangling
+    #ifdef _WIN32
+        #define FFI_EXPORT extern "C" __declspec(dllexport)
+    #else
+        #define FFI_EXPORT extern "C" __attribute__((visibility("default"))) __attribute__((used))
+    #endif
+#else
+    // C build: No extern "C" needed
+    #ifdef _WIN32
+        #define FFI_EXPORT __declspec(dllexport)
+    #else
+        #define FFI_EXPORT __attribute__((visibility("default"))) __attribute__((used))
+    #endif
 #endif
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -138,10 +144,6 @@ FFI_EXPORT int jpn_phoneme_get_word_count(void);
  * @brief Clean up all resources used by the converter
  */
 FFI_EXPORT void jpn_phoneme_cleanup(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // JPN_TO_PHONEME_FFI_H
 
