@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'japanese_phoneme_converter'
-  s.version          = '0.0.1'
+  s.version          = '2.3.0'
   s.summary          = 'A new Flutter FFI plugin project.'
   s.description      = <<-DESC
 A new Flutter FFI plugin project.
