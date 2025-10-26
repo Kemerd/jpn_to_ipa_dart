@@ -2288,6 +2288,16 @@ namespace SegmentedConversion {
                     g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"wa\" (particle)");
                 }
             }
+            // Special handling for the directional particle へ → "e"
+            // Only apply this if NOT from furigana (furigana is always "he")
+            // AND only if it comes AFTER another word (i > 0), since particles follow nouns!
+            // へそ (first word) → "heso", but 学校へ (second word) → "gakkou e"
+            else if ((words[i].text == "へ" || words[i].text == "\xe3\x81\xb8") && i > 0) {  // へ in UTF-8
+                result += "e";
+                if (g_logger_ptr) {
+                    g_logger_ptr->log("  Converted word[" + std::to_string(i) + "] \"" + words[i].text + "\" → \"e\" (particle)");
+                }
+            }
             else {
                 // Normal word - convert through phoneme dictionary
                 std::string phoneme = converter.convert(words[i].text);
@@ -2345,6 +2355,19 @@ namespace SegmentedConversion {
                 Match match;
                 match.original = words[i].text;
                 match.phoneme = "wa";
+                match.start_index = byte_offset;
+                result.matches.push_back(match);
+            }
+            // Special handling for the directional particle へ → "e"
+            // Only apply this if NOT from furigana (furigana is always "he")
+            // AND only if it comes AFTER another word (i > 0), since particles follow nouns!
+            // へそ (first word) → "heso", but 学校へ (second word) → "gakkou e"
+            else if ((words[i].text == "へ" || words[i].text == "\xe3\x81\xb8") && i > 0) {  // へ in UTF-8
+                result.phonemes += "e";
+                // Add to matches for consistency
+                Match match;
+                match.original = words[i].text;
+                match.phoneme = "e";
                 match.start_index = byte_offset;
                 result.matches.push_back(match);
             }
