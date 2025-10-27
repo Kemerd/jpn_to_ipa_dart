@@ -81,11 +81,7 @@ class JapanesePhonemeConverter {
     if (Platform.isAndroid || Platform.isLinux) {
       return ffi.DynamicLibrary.open('lib$libName.so');
     } else if (Platform.isIOS || Platform.isMacOS) {
-      try{
-        return ffi.DynamicLibrary.executable();
-      } catch (e) {
-        return ffi.DynamicLibrary.process();
-      }
+      return ffi.DynamicLibrary.process();
     } else if (Platform.isWindows) {
       return ffi.DynamicLibrary.open('$libName.dll');
     } else {
@@ -95,27 +91,7 @@ class JapanesePhonemeConverter {
 
   /// Bind native functions using generated bindings
   void _bindFunctions() {
-    // On macOS/iOS, C symbols have an underscore prefix (e.g., _jpn_phoneme_init)
-    // but DynamicLibrary.lookup() expects the name without underscore.
-    // We need a custom lookup function that handles this platform quirk.
-    if (Platform.isIOS || Platform.isMacOS) {
-      _bindings = JapanesePhonemeConverterBindings.fromLookup(_createMacIOSLookup());
-    } else {
-      _bindings = JapanesePhonemeConverterBindings(_lib!);
-    }
-  }
-
-  /// Create a custom symbol lookup function for macOS/iOS that handles underscore prefix
-  ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) _createMacIOSLookup() {
-    return <T extends ffi.NativeType>(String symbolName) {
-      // On macOS/iOS, try with underscore prefix first, then without
-      try {
-        return _lib!.lookup<T>('_$symbolName');
-      } catch (e) {
-        // Fallback to name without underscore
-        return _lib!.lookup<T>(symbolName);
-      }
-    };
+    _bindings = JapanesePhonemeConverterBindings(_lib!);
   }
 
   /// Initialize the converter with the binary trie.
@@ -285,18 +261,11 @@ class JapanesePhonemeConverter {
     return result;
   }
 
-  /// Get the last error message from the native library or initialization.
+  /// Get the last error message from the native library.
   ///
   /// Returns the error message, or empty string if no error occurred.
   String get lastError {
     _checkNotDisposed();
-    
-    // Check for init errors first (e.g., asset loading failures)
-    if (_lastInitError.isNotEmpty) {
-      return _lastInitError;
-    }
-    
-    // Then check native library errors
     final errorPtr = _bindings!.jpn_phoneme_get_error();
     return errorPtr.cast<Utf8>().toDartString();
   }
