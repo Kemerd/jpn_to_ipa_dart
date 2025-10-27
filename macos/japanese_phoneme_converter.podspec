@@ -29,10 +29,6 @@ A new Flutter FFI plugin project.
   s.dependency 'FlutterMacOS'
 
   s.platform = :osx, '10.11'
-  
-  # CRITICAL: Explicitly support static linking for use_frameworks! :linkage => :static
-  s.static_framework = true
-  
   # C++17 is required for the phoneme converter
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES',
