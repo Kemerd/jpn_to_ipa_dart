@@ -68,6 +68,41 @@ The native build systems that are invoked by FFI (and method channel) plugins ar
   * See the documentation in linux/CMakeLists.txt.
   * See the documentation in windows/CMakeLists.txt.
 
+## iOS Configuration
+
+### Dynamic Framework Workaround (2024-06-25)
+
+If you encounter build issues on iOS related to static framework dependencies, you may need to configure your Podfile to use dynamic frameworks. This solution was discovered by Petri Lipponen when working with similar FFI plugins.
+
+Add the following snippet to your app's `ios/Podfile`:
+
+```ruby
+dynamic_framework = ['japanese_phoneme_converter']
+
+pre_install do |installer|
+  installer.pod_targets.each {| pod |
+    if dynamic_framework.include?(pod.name)
+      Pod::Installer::Xcode::TargetValidator.send(:define_method, :verify_no_static_framework_transitive_dependencies) {}
+      puts "turn to dynamic framework name:" + pod.name
+      def pod.dynamic_framework;
+        true
+      end
+      def pod.build_type;
+        Pod::BuildType.dynamic_framework
+      end
+    end
+  }
+end
+```
+
+Then later in the configuration you can use:
+
+```ruby
+use_frameworks! :linkage => :static
+```
+
+This allows the plugin to be built as a dynamic framework while maintaining static linkage for other dependencies.
+
 ## Binding to native code
 
 To use the native code, bindings in Dart are needed.
