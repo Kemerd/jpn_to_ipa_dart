@@ -21,6 +21,9 @@ A new Flutter FFI plugin project.
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
+  
+  # CRITICAL: Explicitly support static linking for use_frameworks! :linkage => :static
+  s.static_framework = true
 
   # C++17 is required for the phoneme converter
   # Flutter.framework does not contain a i386 slice.
